@@ -1,3 +1,5 @@
+import asyncio
+
 import gym.spaces
 import numpy as np
 import ray.rllib
@@ -5,6 +7,13 @@ import ray.rllib
 import pyquake.client
 
 from . import phys
+
+
+__all__ = (
+    'eval',
+    'eval_coro',
+    'PhysEnv',
+)
 
 
 _TIME_DELTA = np.float32(0.014)
@@ -97,22 +106,52 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
 
 def _make_observation(client):
-    pass
+    yaw = client.angles[1]
+    vel = np.array(client.velocity)
+    z_pos = client.player_origin[2]
+    return np.concatenate([[yaw], [z_pos], vel])
 
 
 def _apply_action(client, action):
-    pass
+    yaw = client.angles[1]
+    smove = int(_SMOVE_MAX * (action[0] - 1))
+    fmove = int(_FMOVE_MAX * action[1])
+    client.move(pitch=0, yaw=yaw, roll=0, forward=fmove, side=smove,
+                up=0, buttons=0, impulse=0)
 
 
-async def eval(port, trainer):
+async def eval_coro(port, trainer, demo_fname):
     client = await pyquake.client.AsyncClient.connect("localhost", port)
 
+    obs_list = []
+    action_list = []
+
     try:
-        demo = self._client.record_demo()
+        demo = client.record_demo()
         await client.wait_until_spawn()
-        for i in range(358):
+        for _ in range(358):
             obs = _make_observation(client)
+            obs_list.append(obs)
             action = trainer.compute_action(obs)
+            action_list.append(action)
             _apply_action(client, action)
+            await client.wait_for_movement(client.view_entity)
+
+        demo.stop_recording()
+        with open(demo_fname, 'wb') as f:
+            demo.dump(f)
+
     finally:
-        await self._client.disconnect()
+        await client.disconnect()
+
+    return np.array(obs_list), np.array(action_list)
+
+
+def eval(port: int, trainer: ray.rllib.agents.Trainer, demo_fname: str):
+    """Connect to a quake server and record a demo using a trained model.
+    
+    The quake server must be running with +sync_movements 1.
+
+    """
+    return asyncio.run(eval_coro(port, trainer, demo_fname))
+
