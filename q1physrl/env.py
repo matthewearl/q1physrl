@@ -94,17 +94,16 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
-        button2 = np.zeros((self.num_envs,), dtype=np.bool)
+        #button2 = np.zeros((self.num_envs,), dtype=np.bool)
+        button2 = self._player_state.vel[:, 2] <= 16
         time_delta = np.full((self.num_envs,), _TIME_DELTA)
         
         inputs = phys.Inputs(yaw=self._yaw, pitch=pitch, roll=roll, fmove=fmove, smove=smove,
                              button2=button2, time_delta=time_delta)
 
-        vel_before = self._player_state.vel[:, 1]
         self._player_state = phys.apply(inputs, self._player_state)
 
-        #reward = _TIME_DELTA * self._player_state.vel[:, 1]
-        reward = self._player_state.vel[:, 1] - vel_before
+        reward = _TIME_DELTA * self._player_state.vel[:, 1]
         self._time += _TIME_DELTA
         done = self._time > _TIME_LIMIT
         
@@ -128,8 +127,11 @@ def _apply_action(client, action):
     yaw *= np.pi / 180
     smove = int(_SMOVE_MAX * (action[1] - 1))
     fmove = int(_FMOVE_MAX * action[2])
+    buttons = np.where(client.velocity[2] <= 16, 2, 0)
+
+    print(client.velocity[2], buttons)
     client.move(pitch=0, yaw=yaw, roll=0, forward=fmove, side=smove,
-                up=0, buttons=0, impulse=0)
+                up=0, buttons=buttons, impulse=0)
 
 
 async def eval_coro(port, trainer, demo_fname):

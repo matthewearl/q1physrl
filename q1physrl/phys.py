@@ -49,7 +49,7 @@ _FRICTION = np.float32(4)
 _STOP_SPEED = np.float32(100)
 _JUMP_SPEED = np.float32(270)
 _GRAVITY = np.float32(800)
-_FLOOR_HEIGHT = np.float32(24.030)
+_FLOOR_HEIGHT = np.float32(24.03125)  # 24 + DIST_EPSILON
 
 
 def _angle_vectors(yaw, pitch, roll):
