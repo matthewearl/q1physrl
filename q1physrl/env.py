@@ -27,13 +27,14 @@ _INITIAL_STATE = {'z_pos': np.float32(32.843201),
 _INITIAL_YAW = np.float32(90)
 _TIME_LIMIT = 5.  # seconds
 
+_OBS_SCALE = [_TIME_LIMIT, 90., 100, 200, 200, 200]
+
 
 class PhysEnv(ray.rllib.env.VectorEnv):
     _player_state: phys.PlayerState
     _yaw: np.ndarray
     _time: np.ndarray
     _step_num: int
-
 
     def _round_vel(self, v):
         # See sv_main.c : SV_WriteClientdataToMessage
@@ -49,22 +50,26 @@ class PhysEnv(ray.rllib.env.VectorEnv):
     def _get_obs(self):
         ps = self._player_state
 
+        t = _TIME_LIMIT - self._time
         vel = self._round_vel(ps.vel)
         z_pos = self._round_origin(ps.z_pos)
 
-        return np.concatenate([self._yaw[:, None], z_pos[:, None], vel], axis=1)
+        obs = np.concatenate([t[:, None], self._yaw[:, None], z_pos[:, None], vel], axis=1)
+        return obs / _OBS_SCALE
 
     def _get_obs_at(self, index):
         ps = self._player_state
+        t = _TIME_LIMIT - self._time[index]
         z_pos = self._round_origin(ps.z_pos[index])
         vel = self._round_vel(ps.vel[index])
-        return np.concatenate([self._yaw[index][None], z_pos[None], vel], axis=0)
+        obs = np.concatenate([t[None], self._yaw[index][None], z_pos[None], vel], axis=0)
+        return obs / _OBS_SCALE
 
     def __init__(self, config):
         self.num_envs = config['num_envs']
         self.action_space = gym.spaces.MultiDiscrete([3, 3, 2])
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
-                                                shape=(5,), dtype=np.float32)
+                                                shape=(6,), dtype=np.float32)
         self._step_num = 0
         self.vector_reset()
 
@@ -115,11 +120,12 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         return []
 
 
-def _make_observation(client):
+def _make_observation(client, start_time):
+    t = _TIME_LIMIT - (client.time - start_time)
     yaw = 180 * client.angles[1] / np.pi
     vel = np.array(client.velocity)
     z_pos = client.player_origin[2]
-    return np.concatenate([[yaw], [z_pos], vel])
+    return np.concatenate([[t], [yaw], [z_pos], vel]) / _OBS_SCALE
 
 
 def _apply_action(client, action):
@@ -145,8 +151,9 @@ async def eval_coro(port, trainer, demo_fname):
         await client.wait_until_spawn()
         client.move(*client.angles, 0, 0, 0, 0, 0)
         await client.wait_for_movement(client.view_entity)
+        start_time = client.time
         for _ in range(358):
-            obs = _make_observation(client)
+            obs = _make_observation(client, start_time)
             obs_list.append(obs)
             action = trainer.compute_action(obs)
             action_list.append(action)
