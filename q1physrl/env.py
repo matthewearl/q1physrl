@@ -1,4 +1,5 @@
 import asyncio
+import enum
 
 import gym.spaces
 import numpy as np
@@ -12,6 +13,8 @@ from . import phys
 __all__ = (
     'eval',
     'eval_coro',
+    'Key',
+    'Obs',
     'PhysEnv',
 )
 
@@ -28,6 +31,66 @@ _INITIAL_YAW = np.float32(90)
 _TIME_LIMIT = 5.  # seconds
 
 _OBS_SCALE = [_TIME_LIMIT, 90., 100, 200, 200, 200]
+
+_KEY_PRESS_DELAY = 0.1   # minimum time between consecutive presses of the same key
+
+
+class Key(enum.IntEnum):
+    YAW_LEFT = 0
+    YAW_RIGHT = enum.auto()
+    STRAFE_LEFT = enum.auto()
+    STRAFE_RIGHT = enum.auto()
+    FORWARD = enum.auto()
+
+
+class Obs(enum.IntEnum):
+    TIME_LEFT = 0
+    YAW = enum.auto()
+    Z_POS = enum.auto()
+    X_VEL = enum.auto()
+    Y_VEL = enum.auto()
+    Z_VEL = enum.auto()
+
+
+class _ActionToMove:
+    """Convert a sequence of actions into a sequence of move commands"""
+    _last_key_press_time: np.ndarray
+    _last_keys: np.ndarray
+    _yaw: np.ndarray
+
+    def __init__(self, num_envs):
+        self._num_envs = num_envs
+
+    def map(self, actions, time):
+        elapsed = time[:, None] >= self._last_key_press_time + _KEY_PRESS_DELAY
+        keys = actions & (elapsed | self._last_keys)
+        self._last_key_press_time = np.where(
+            keys & ~self._last_keys,
+            time[:, None],
+            self._last_key_press_time
+        )
+        self._last_keys = keys
+
+        keys_int = keys.astype(np.int)
+
+        yaw_keys = keys_int[:, Key.YAW_RIGHT] - keys_int[:, Key.YAW_LEFT]
+        strafe_keys = keys_int[:, Key.STRAFE_RIGHT] - keys_int[:, Key.STRAFE_LEFT]
+
+        self._yaw = self._yaw + _TIME_DELTA * _YAW_SPEED * yaw_keys
+        smove = _SMOVE_MAX * strafe_keys
+        fmove = _FMOVE_MAX * keys_int[:, Key.FORWARD]
+
+        return self._yaw, smove.astype(np.int), fmove.astype(np.int)
+
+    def vector_reset(self):
+        self._last_key_press_time = np.full((self._num_envs, len(Key)), -_KEY_PRESS_DELAY)
+        self._last_keys = np.full((self._num_envs, len(Key)), False)
+        self._yaw = np.full((self._num_envs,), _INITIAL_YAW, dtype=np.float32)
+
+    def reset_at(self, index):
+        self._last_key_press_time[index] = -_KEY_PRESS_DELAY
+        self._last_keys[index] = False
+        self._yaw[index] = _INITIAL_YAW
 
 
 class PhysEnv(ray.rllib.env.VectorEnv):
@@ -67,9 +130,11 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
     def __init__(self, config):
         self.num_envs = config['num_envs']
-        self.action_space = gym.spaces.MultiDiscrete([3, 3, 2])
+        self.action_space = gym.spaces.MultiDiscrete([2, 2, 2, 2, 2])
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(6,), dtype=np.float32)
+
+        self._action_to_move = _ActionToMove(self.num_envs)
         self._step_num = 0
         self.vector_reset()
 
@@ -80,6 +145,8 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self._yaw = np.full((self.num_envs,), _INITIAL_YAW, dtype=np.float32)
         self._time = np.zeros((self.num_envs,), np.float32)
 
+        self._action_to_move.vector_reset()
+
         return self._get_obs()
 
     def reset_at(self, index):
@@ -88,14 +155,12 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self._yaw[index] = _INITIAL_YAW
         self._time[index] = 0.
 
+        self._action_to_move.reset_at(index)
+
         return self._get_obs_at(index)
 
     def vector_step(self, actions):
-        actions = np.stack(actions)
-
-        self._yaw = self._yaw + _TIME_DELTA * _YAW_SPEED * (actions[:, 0] - 1)
-        smove = _SMOVE_MAX * (actions[:, 1] - 1)
-        fmove = _FMOVE_MAX * actions[:, 2]
+        self._yaw, smove, fmove = self._action_to_move.map(np.stack(actions), self._time)
 
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
@@ -128,20 +193,19 @@ def _make_observation(client, start_time):
     return np.concatenate([[t], [yaw], [z_pos], vel]) / _OBS_SCALE
 
 
-def _apply_action(client, action):
-    yaw = (180 * client.angles[1] / np.pi) + _TIME_DELTA * _YAW_SPEED * (action[0] - 1)
+def _apply_action(client, action_to_move, action, time):
+    (yaw,), (smove,), (fmove,) = action_to_move.map(action[None], np.float32(time)[None])
     yaw *= np.pi / 180
-    smove = int(_SMOVE_MAX * (action[1] - 1))
-    fmove = int(_FMOVE_MAX * action[2])
-    buttons = np.where(client.velocity[2] <= 16, 2, 0)
 
-    print(client.velocity[2], buttons)
+    buttons = np.where(client.velocity[2] <= 16, 2, 0)
     client.move(pitch=0, yaw=yaw, roll=0, forward=fmove, side=smove,
                 up=0, buttons=buttons, impulse=0)
 
 
 async def eval_coro(port, trainer, demo_fname):
     client = await pyquake.client.AsyncClient.connect("localhost", port)
+    action_to_move = _ActionToMove(1)
+    action_to_move.vector_reset()
 
     obs_list = []
     action_list = []
@@ -157,7 +221,8 @@ async def eval_coro(port, trainer, demo_fname):
             obs_list.append(obs)
             action = trainer.compute_action(obs)
             action_list.append(action)
-            _apply_action(client, action)
+
+            _apply_action(client, action_to_move, action, client.time - start_time)
             await client.wait_for_movement(client.view_entity)
 
         demo.stop_recording()
