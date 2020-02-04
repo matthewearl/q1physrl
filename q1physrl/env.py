@@ -11,6 +11,7 @@ from . import phys
 
 
 __all__ = (
+    'ActionToMove',
     'eval',
     'eval_coro',
     'Key',
@@ -32,7 +33,7 @@ _TIME_LIMIT = 5.  # seconds
 
 _OBS_SCALE = [_TIME_LIMIT, 90., 100, 200, 200, 200]
 
-_KEY_PRESS_DELAY = 0.1   # minimum time between consecutive presses of the same key
+_KEY_PRESS_DELAY = 0.3   # minimum time between consecutive presses of the same key
 
 
 class Key(enum.IntEnum):
@@ -52,7 +53,7 @@ class Obs(enum.IntEnum):
     Z_VEL = enum.auto()
 
 
-class _ActionToMove:
+class ActionToMove:
     """Convert a sequence of actions into a sequence of move commands"""
     _last_key_press_time: np.ndarray
     _last_keys: np.ndarray
@@ -94,7 +95,7 @@ class _ActionToMove:
 
 
 class PhysEnv(ray.rllib.env.VectorEnv):
-    _player_state: phys.PlayerState
+    player_state: phys.PlayerState
     _yaw: np.ndarray
     _time: np.ndarray
     _step_num: int
@@ -111,7 +112,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         return np.round(o * 8) / 8
 
     def _get_obs(self):
-        ps = self._player_state
+        ps = self.player_state
 
         t = _TIME_LIMIT - self._time
         vel = self._round_vel(ps.vel)
@@ -121,7 +122,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         return obs / _OBS_SCALE
 
     def _get_obs_at(self, index):
-        ps = self._player_state
+        ps = self.player_state
         t = _TIME_LIMIT - self._time[index]
         z_pos = self._round_origin(ps.z_pos[index])
         vel = self._round_vel(ps.vel[index])
@@ -134,12 +135,12 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(6,), dtype=np.float32)
 
-        self._action_to_move = _ActionToMove(self.num_envs)
+        self._action_to_move = ActionToMove(self.num_envs)
         self._step_num = 0
         self.vector_reset()
 
     def vector_reset(self):
-        self._player_state = phys.PlayerState(
+        self.player_state = phys.PlayerState(
             **{k: np.stack([v for _ in range(self.num_envs)]) for k, v in _INITIAL_STATE.items()})
 
         self._yaw = np.full((self.num_envs,), _INITIAL_YAW, dtype=np.float32)
@@ -151,7 +152,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
     def reset_at(self, index):
         for k, v in _INITIAL_STATE.items():
-            getattr(self._player_state, k)[index] = v
+            getattr(self.player_state, k)[index] = v
         self._yaw[index] = _INITIAL_YAW
         self._time[index] = 0.
 
@@ -165,15 +166,15 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
         #button2 = np.zeros((self.num_envs,), dtype=np.bool)
-        button2 = self._player_state.vel[:, 2] <= 16
+        button2 = self.player_state.vel[:, 2] <= 16
         time_delta = np.full((self.num_envs,), _TIME_DELTA)
         
         inputs = phys.Inputs(yaw=self._yaw, pitch=pitch, roll=roll, fmove=fmove, smove=smove,
                              button2=button2, time_delta=time_delta)
 
-        self._player_state = phys.apply(inputs, self._player_state)
+        self.player_state = phys.apply(inputs, self.player_state)
 
-        reward = _TIME_DELTA * self._player_state.vel[:, 1]
+        reward = _TIME_DELTA * self.player_state.vel[:, 1]
         self._time += _TIME_DELTA
         done = self._time > _TIME_LIMIT
         
@@ -204,7 +205,7 @@ def _apply_action(client, action_to_move, action, time):
 
 async def eval_coro(port, trainer, demo_fname):
     client = await pyquake.client.AsyncClient.connect("localhost", port)
-    action_to_move = _ActionToMove(1)
+    action_to_move = ActionToMove(1)
     action_to_move.vector_reset()
 
     obs_list = []

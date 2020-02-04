@@ -173,6 +173,12 @@ class PlayerState:
                              'jumpreleased': self.jump_released,
                             })
 
+    @classmethod
+    def concatenate(cls, player_states):
+        dicts = [dataclasses.asdict(ps) for ps in player_states]
+        return cls(**{f.name: np.concatenate([d[f.name] for d in dicts])
+                        for f in dataclasses.fields(cls)})
+
 
 def apply(inputs: Inputs, player_state: PlayerState) -> PlayerState:
     vel = player_state.vel.copy()
