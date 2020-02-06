@@ -23,7 +23,7 @@ __all__ = (
 _TIME_DELTA = np.float32(0.014)
 _FMOVE_MAX = np.float32(800)  # units per second
 _SMOVE_MAX = np.float32(700)  # units per second
-_YAW_SPEED = np.float32(360)  # degrees per second
+_MAX_YAW_SPEED = np.float32(2 * 360)  # degrees per second
 _INITIAL_STATE = {'z_pos': np.float32(32.843201),
                   'vel': np.array([0, 0, -12], dtype=np.float32),
                   'on_ground': np.bool(False),
@@ -37,9 +37,7 @@ _KEY_PRESS_DELAY = 0.3   # minimum time between consecutive presses of the same 
 
 
 class Key(enum.IntEnum):
-    YAW_LEFT = 0
-    YAW_RIGHT = enum.auto()
-    STRAFE_LEFT = enum.auto()
+    STRAFE_LEFT = 0
     STRAFE_RIGHT = enum.auto()
     FORWARD = enum.auto()
 
@@ -63,8 +61,11 @@ class ActionToMove:
         self._num_envs = num_envs
 
     def map(self, actions, time):
+        key_actions = np.stack([d[:-1] for d in actions])
+        mouse_x_action = np.stack([d[-1][0] for d in actions])
+
         elapsed = time[:, None] >= self._last_key_press_time + _KEY_PRESS_DELAY
-        keys = actions & (elapsed | self._last_keys)
+        keys = key_actions & (elapsed | self._last_keys)
         self._last_key_press_time = np.where(
             keys & ~self._last_keys,
             time[:, None],
@@ -73,11 +74,8 @@ class ActionToMove:
         self._last_keys = keys
 
         keys_int = keys.astype(np.int)
-
-        yaw_keys = keys_int[:, Key.YAW_RIGHT] - keys_int[:, Key.YAW_LEFT]
+        self._yaw = self._yaw + mouse_x_action
         strafe_keys = keys_int[:, Key.STRAFE_RIGHT] - keys_int[:, Key.STRAFE_LEFT]
-
-        self._yaw = self._yaw + _TIME_DELTA * _YAW_SPEED * yaw_keys
         smove = _SMOVE_MAX * strafe_keys
         fmove = _FMOVE_MAX * keys_int[:, Key.FORWARD]
 
@@ -131,7 +129,14 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
     def __init__(self, config):
         self.num_envs = config['num_envs']
-        self.action_space = gym.spaces.MultiDiscrete([2, 2, 2, 2, 2])
+        max_yaw_delta = _MAX_YAW_SPEED * _TIME_DELTA
+        self.action_space = gym.spaces.Tuple([
+            gym.spaces.Discrete(2),
+            gym.spaces.Discrete(2),
+            gym.spaces.Discrete(2),
+            gym.spaces.Box(low=-max_yaw_delta, high=max_yaw_delta, shape=(1,), dtype=np.float32),
+        ])
+
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(6,), dtype=np.float32)
 
@@ -161,7 +166,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         return self._get_obs_at(index)
 
     def vector_step(self, actions):
-        self._yaw, smove, fmove = self._action_to_move.map(np.stack(actions), self._time)
+        self._yaw, smove, fmove = self._action_to_move.map(actions, self._time)
 
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
