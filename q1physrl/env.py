@@ -60,9 +60,14 @@ class ActionToMove:
     def __init__(self, num_envs):
         self._num_envs = num_envs
 
+    def _fix_actions(self, actions):
+        # trainer.compute_actions() and trainer.train() return data in slightly different formats.
+        return np.array([[np.ravel(x)[0] for x in a] for a in actions])
+
     def map(self, actions, time):
-        key_actions = np.stack([d[:-1] for d in actions])
-        mouse_x_action = np.stack([d[-1][0] for d in actions])
+        actions = self._fix_actions(actions)
+        key_actions = actions[:, :3].astype(np.int)
+        mouse_x_action = actions[:, 3]
 
         elapsed = time[:, None] >= self._last_key_press_time + _KEY_PRESS_DELAY
         keys = key_actions & (elapsed | self._last_keys)
@@ -200,7 +205,7 @@ def _make_observation(client, start_time):
 
 
 def _apply_action(client, action_to_move, action, time):
-    (yaw,), (smove,), (fmove,) = action_to_move.map(action[None], np.float32(time)[None])
+    (yaw,), (smove,), (fmove,) = action_to_move.map([[a[0] for a in action]], np.float32(time)[None])
     yaw *= np.pi / 180
 
     buttons = np.where(client.velocity[2] <= 16, 2, 0)
@@ -238,7 +243,7 @@ async def eval_coro(port, trainer, demo_fname):
     finally:
         await client.disconnect()
 
-    return np.array(obs_list), np.array(action_list)
+    return obs_list, action_list
 
 
 def eval(port: int, trainer: ray.rllib.agents.Trainer, demo_fname: str):
