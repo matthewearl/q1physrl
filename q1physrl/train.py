@@ -1,3 +1,4 @@
+import sys
 import dataclasses
 from pprint import pprint
 
@@ -11,7 +12,8 @@ import q1physrl.env
 def make_trainer():
     return ray.rllib.agents.ppo.PPOTrainer(
         env=q1physrl.env.PhysEnv,
-        config={"env_config": {"num_envs": 100}, "gamma": 0.99}
+        config={"env_config": {"num_envs": 100}, "gamma": 0.99, "lr": 5e-6, "entropy_coeff": 1e-2, 
+                "train_batch_size": 20_000}
     )
 
 
@@ -20,7 +22,7 @@ _STATS_TO_TRACK = [
     'episode_reward_max'
 ]
 
-_STATS_TO_PRINT = _STATS_TO_TRACK #+ ['info/learner/default_policy/entropy_coeff']
+_STATS_TO_PRINT = _STATS_TO_TRACK + ['info/learner/default_policy/entropy']
 
 
 def _get_stat(stats, k):
@@ -41,6 +43,9 @@ def train():
     ray.init()
 
     trainer = make_trainer()
+
+    if len(sys.argv) >= 2:
+        trainer.restore(sys.argv[1])
 
     best_stats = {}
 
