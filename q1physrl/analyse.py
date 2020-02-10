@@ -49,6 +49,7 @@ class EvalSimResult:
     yaw: np.ndarray
     smove: np.ndarray
     fmove: np.ndarray
+    jump: np.ndarray
 
 
 def eval_sim(trainer):
@@ -65,10 +66,11 @@ def eval_sim(trainer):
     yaws = []
     smoves = []
     fmoves = []
+    jumps = []
 
     while not done:
         a = trainer.compute_action(o)
-        (yaw,), (smove,), (fmove,) = action_to_move.map([a], e._time)
+        (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([a], e._time)
         player_states.append(e.player_state)
         (o,), (r,), (done,), _ = e.vector_step([a])
         obs.append(o)
@@ -77,6 +79,7 @@ def eval_sim(trainer):
         yaws.append(yaw)
         smoves.append(smove)
         fmoves.append(fmove)
+        jumps.append(jump)
         
     return EvalSimResult(
         player_state=phys.PlayerState.concatenate(player_states),
@@ -86,5 +89,6 @@ def eval_sim(trainer):
         yaw=np.stack(yaws),
         smove=np.stack(smoves),
         fmove=np.stack(fmoves),
+        jump=np.stack(jumps),
     )
 

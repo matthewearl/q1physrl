@@ -40,6 +40,7 @@ class Key(enum.IntEnum):
     STRAFE_LEFT = 0
     STRAFE_RIGHT = enum.auto()
     FORWARD = enum.auto()
+    JUMP = enum.auto()
 
 
 class Obs(enum.IntEnum):
@@ -66,8 +67,8 @@ class ActionToMove:
 
     def map(self, actions, time):
         actions = self._fix_actions(actions)
-        key_actions = actions[:, :3].astype(np.int)
-        mouse_x_action = actions[:, 3]
+        key_actions = actions[:, :4].astype(np.int)
+        mouse_x_action = actions[:, 4]
 
         elapsed = time[:, None] >= self._last_key_press_time + _KEY_PRESS_DELAY
         keys = key_actions & (elapsed | self._last_keys)
@@ -83,8 +84,9 @@ class ActionToMove:
         strafe_keys = keys_int[:, Key.STRAFE_RIGHT] - keys_int[:, Key.STRAFE_LEFT]
         smove = _SMOVE_MAX * strafe_keys
         fmove = _FMOVE_MAX * keys_int[:, Key.FORWARD]
+        jump = keys_int[:, Key.JUMP]
 
-        return self._yaw, smove.astype(np.int), fmove.astype(np.int)
+        return self._yaw, smove.astype(np.int), fmove.astype(np.int), jump.astype(np.bool)
 
     def vector_reset(self):
         self._last_key_press_time = np.full((self._num_envs, len(Key)), -_KEY_PRESS_DELAY)
@@ -139,6 +141,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
             gym.spaces.Discrete(2),
             gym.spaces.Discrete(2),
             gym.spaces.Discrete(2),
+            gym.spaces.Discrete(2),
             gym.spaces.Box(low=-max_yaw_delta, high=max_yaw_delta, shape=(1,), dtype=np.float32),
         ])
 
@@ -171,12 +174,11 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         return self._get_obs_at(index)
 
     def vector_step(self, actions):
-        self._yaw, smove, fmove = self._action_to_move.map(actions, self._time)
+        self._yaw, smove, fmove, jump = self._action_to_move.map(actions, self._time)
 
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
-        #button2 = np.zeros((self.num_envs,), dtype=np.bool)
-        button2 = self.player_state.vel[:, 2] <= 16
+        button2 = jump
         time_delta = np.full((self.num_envs,), _TIME_DELTA)
         
         inputs = phys.Inputs(yaw=self._yaw, pitch=pitch, roll=roll, fmove=fmove, smove=smove,
@@ -205,10 +207,10 @@ def _make_observation(client, start_time):
 
 
 def _apply_action(client, action_to_move, action, time):
-    (yaw,), (smove,), (fmove,) = action_to_move.map([[a[0] for a in action]], np.float32(time)[None])
+    (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([[a[0] for a in action]], np.float32(time)[None])
     yaw *= np.pi / 180
 
-    buttons = np.where(client.velocity[2] <= 16, 2, 0)
+    buttons = np.where(jump, 2, 0)
     client.move(pitch=0, yaw=yaw, roll=0, forward=fmove, side=smove,
                 up=0, buttons=buttons, impulse=0)
 
