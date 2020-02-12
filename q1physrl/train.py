@@ -22,7 +22,7 @@ _STATS_TO_TRACK = [
     'episode_reward_max'
 ]
 
-_STATS_TO_PRINT = _STATS_TO_TRACK + ['info/learner/default_policy/entropy']
+_STATS_TO_PRINT = _STATS_TO_TRACK + ['info/learner/default_policy/entropy', 'episode_len_mean']
 
 
 def _get_stat(stats, k):

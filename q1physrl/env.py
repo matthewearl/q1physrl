@@ -34,6 +34,7 @@ _TIME_LIMIT = 5.  # seconds
 _OBS_SCALE = [_TIME_LIMIT, 90., 100, 200, 200, 200]
 
 _KEY_PRESS_DELAY = 0.3   # minimum time between consecutive presses of the same key
+_MAX_INITIAL_SPEED = np.float32(700)  # units per second
 
 
 class Key(enum.IntEnum):
@@ -64,16 +65,16 @@ class ActionToMove:
         # trainer.compute_actions() and trainer.train() return data in slightly different formats.
         return np.array([[np.ravel(x)[0] for x in a] for a in actions])
 
-    def map(self, actions, time):
+    def map(self, actions, time_remaining):
         actions = self._fix_actions(actions)
         key_actions = actions[:, :3].astype(np.int)
         mouse_x_action = actions[:, 3]
 
-        elapsed = time[:, None] >= self._last_key_press_time + _KEY_PRESS_DELAY
+        elapsed = (_TIME_LIMIT - time_remaining[:, None]) >= self._last_key_press_time + _KEY_PRESS_DELAY
         keys = key_actions & (elapsed | self._last_keys)
         self._last_key_press_time = np.where(
             keys & ~self._last_keys,
-            time[:, None],
+            (_TIME_LIMIT - time_remaining[:, None]),
             self._last_key_press_time
         )
         self._last_keys = keys
@@ -86,21 +87,22 @@ class ActionToMove:
 
         return self._yaw, smove.astype(np.int), fmove.astype(np.int)
 
-    def vector_reset(self):
+    def vector_reset(self, yaw=_INITIAL_YAW):
         self._last_key_press_time = np.full((self._num_envs, len(Key)), -_KEY_PRESS_DELAY)
         self._last_keys = np.full((self._num_envs, len(Key)), False)
-        self._yaw = np.full((self._num_envs,), _INITIAL_YAW, dtype=np.float32)
 
-    def reset_at(self, index):
+        self._yaw = np.full((self._num_envs,), yaw, dtype=np.float32)
+
+    def reset_at(self, index, yaw=_INITIAL_YAW):
         self._last_key_press_time[index] = -_KEY_PRESS_DELAY
         self._last_keys[index] = False
-        self._yaw[index] = _INITIAL_YAW
+        self._yaw[index] = yaw
 
 
 class PhysEnv(ray.rllib.env.VectorEnv):
     player_state: phys.PlayerState
     _yaw: np.ndarray
-    _time: np.ndarray
+    _time_remaining: np.ndarray
     _step_num: int
 
     def _round_vel(self, v):
@@ -117,7 +119,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
     def _get_obs(self):
         ps = self.player_state
 
-        t = _TIME_LIMIT - self._time
+        t = self._time_remaining
         vel = self._round_vel(ps.vel)
         z_pos = self._round_origin(ps.z_pos)
 
@@ -126,7 +128,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
     def _get_obs_at(self, index):
         ps = self.player_state
-        t = _TIME_LIMIT - self._time[index]
+        t = self._time_remaining[index]
         z_pos = self._round_origin(ps.z_pos[index])
         vel = self._round_vel(ps.vel[index])
         obs = np.concatenate([t[None], self._yaw[index][None], z_pos[None], vel], axis=0)
@@ -153,25 +155,36 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.player_state = phys.PlayerState(
             **{k: np.stack([v for _ in range(self.num_envs)]) for k, v in _INITIAL_STATE.items()})
 
-        self._yaw = np.full((self.num_envs,), _INITIAL_YAW, dtype=np.float32)
-        self._time = np.zeros((self.num_envs,), np.float32)
+        self._yaw = np.random.uniform(0, 360, size=(self.num_envs,))
+        self._time_remaining = np.random.uniform(_TIME_LIMIT, size=(self.num_envs,))
 
-        self._action_to_move.vector_reset()
+        speed = np.random.uniform(_MAX_INITIAL_SPEED, size=(self.num_envs,))
+        move_angle = np.random.uniform(2 * np.pi, size=(self.num_envs,))
+        self.player_state.vel[:, 0] = speed * np.cos(move_angle)
+        self.player_state.vel[:, 1] = speed * np.sin(move_angle)
+
+
+        self._action_to_move.vector_reset(self._yaw)
 
         return self._get_obs()
 
     def reset_at(self, index):
         for k, v in _INITIAL_STATE.items():
             getattr(self.player_state, k)[index] = v
-        self._yaw[index] = _INITIAL_YAW
-        self._time[index] = 0.
+        self._yaw[index] = np.random.uniform(0, 360)
+        self._time_remaining[index] = np.random.uniform(_TIME_LIMIT)
 
-        self._action_to_move.reset_at(index)
+        speed = np.random.uniform(_MAX_INITIAL_SPEED)
+        move_angle = np.random.uniform(2 * np.pi)
+        self.player_state.vel[index, 0] = speed * np.cos(move_angle)
+        self.player_state.vel[index, 1] = speed * np.sin(move_angle)
+
+        self._action_to_move.reset_at(index, self._yaw[index])
 
         return self._get_obs_at(index)
 
     def vector_step(self, actions):
-        self._yaw, smove, fmove = self._action_to_move.map(actions, self._time)
+        self._yaw, smove, fmove = self._action_to_move.map(actions, self._time_remaining)
 
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
@@ -185,8 +198,8 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.player_state = phys.apply(inputs, self.player_state)
 
         reward = _TIME_DELTA * self.player_state.vel[:, 1]
-        self._time += _TIME_DELTA
-        done = self._time > _TIME_LIMIT
+        self._time_remaining -= _TIME_DELTA
+        done = self._time_remaining < 0
         
         self._step_num += 1
 
