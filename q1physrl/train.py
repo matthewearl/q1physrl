@@ -8,12 +8,28 @@ import ray.rllib
 
 import q1physrl.env
 
+try:
+    import wandb
+    from wandb.tensorflow import WandbHook
+except ImportError:
+    wandb = None
+
+
+def _on_episode_end(info):
+    episode = info["episode"]
+    if episode.last_info_for()['zero_start']:
+        episode.custom_metrics['zero_start_total_reward'] = episode.total_reward
+
 
 def make_trainer():
     return ray.rllib.agents.ppo.PPOTrainer(
         env=q1physrl.env.PhysEnv,
         config={"env_config": {"num_envs": 100}, "gamma": 0.99, "lr": 5e-6, "entropy_coeff": 1e-2, 
-                "train_batch_size": 20_000}
+                "train_batch_size": 20_000,
+                "callbacks": {
+                    "on_episode_end": _on_episode_end,
+                }
+               }
     )
 
 
@@ -40,6 +56,9 @@ class _Stat:
 
 
 def train():
+    if wandb is not None:
+        wandb.init(project="q1physrl", sync_tensorboard=True)
+
     ray.init()
 
     trainer = make_trainer()

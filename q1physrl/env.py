@@ -28,13 +28,15 @@ _INITIAL_STATE = {'z_pos': np.float32(32.843201),
                   'vel': np.array([0, 0, -12], dtype=np.float32),
                   'on_ground': np.bool(False),
                   'jump_released': np.bool(True)}
-_INITIAL_YAW = np.float32(90)
+_INITIAL_YAW_RANGE = (0, 360)
+_INITIAL_YAW_ZERO = np.float32(90)
+_ZERO_START_PROB = 0.1
 _TIME_LIMIT = 5.  # seconds
 
 _OBS_SCALE = [_TIME_LIMIT, 90., 100, 200, 200, 200]
 
 _KEY_PRESS_DELAY = 0.3   # minimum time between consecutive presses of the same key
-_MAX_INITIAL_SPEED = np.float32(700)  # units per second
+_MAX_INITIAL_SPEED = np.float32(0)  # units per second
 
 
 class Key(enum.IntEnum):
@@ -87,13 +89,13 @@ class ActionToMove:
 
         return self._yaw, smove.astype(np.int), fmove.astype(np.int)
 
-    def vector_reset(self, yaw=_INITIAL_YAW):
+    def vector_reset(self, yaw=_INITIAL_YAW_ZERO):
         self._last_key_press_time = np.full((self._num_envs, len(Key)), -_KEY_PRESS_DELAY)
         self._last_keys = np.full((self._num_envs, len(Key)), False)
 
         self._yaw = np.full((self._num_envs,), yaw, dtype=np.float32)
 
-    def reset_at(self, index, yaw=_INITIAL_YAW):
+    def reset_at(self, index, yaw=_INITIAL_YAW_ZERO):
         self._last_key_press_time[index] = -_KEY_PRESS_DELAY
         self._last_keys[index] = False
         self._yaw[index] = yaw
@@ -104,6 +106,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
     _yaw: np.ndarray
     _time_remaining: np.ndarray
     _step_num: int
+    _zero_start: np.ndarray
 
     def _round_vel(self, v):
         # See sv_main.c : SV_WriteClientdataToMessage
@@ -155,10 +158,18 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.player_state = phys.PlayerState(
             **{k: np.stack([v for _ in range(self.num_envs)]) for k, v in _INITIAL_STATE.items()})
 
-        self._yaw = np.random.uniform(0, 360, size=(self.num_envs,))
-        self._time_remaining = np.random.uniform(_TIME_LIMIT, size=(self.num_envs,))
+        self._zero_start = np.random.random(size=(self.num_envs,)) < _ZERO_START_PROB
 
-        speed = np.random.uniform(_MAX_INITIAL_SPEED, size=(self.num_envs,))
+        self._yaw = np.where(self._zero_start,
+                             _INITIAL_YAW_ZERO,
+                             np.random.uniform(*_INITIAL_YAW_RANGE, size=(self.num_envs,)))
+        self._time_remaining = np.where(self._zero_start,
+                                        _TIME_LIMIT,
+                                        np.random.uniform(_TIME_LIMIT, size=(self.num_envs,)))
+        speed = np.where(self._zero_start,
+                         0,
+                         np.random.uniform(_MAX_INITIAL_SPEED, size=(self.num_envs,)))
+
         move_angle = np.random.uniform(2 * np.pi, size=(self.num_envs,))
         self.player_state.vel[:, 0] = speed * np.cos(move_angle)
         self.player_state.vel[:, 1] = speed * np.sin(move_angle)
@@ -171,10 +182,12 @@ class PhysEnv(ray.rllib.env.VectorEnv):
     def reset_at(self, index):
         for k, v in _INITIAL_STATE.items():
             getattr(self.player_state, k)[index] = v
-        self._yaw[index] = np.random.uniform(0, 360)
-        self._time_remaining[index] = np.random.uniform(_TIME_LIMIT)
 
-        speed = np.random.uniform(_MAX_INITIAL_SPEED)
+        self._zero_start[index] = np.random.random() <_ZERO_START_PROB
+        self._yaw[index] = _INITIAL_YAW_ZERO if self._zero_start[index] else np.random.uniform(*_INITIAL_YAW_RANGE)
+        self._time_remaining[index] = _TIME_LIMIT if self._zero_start[index] else np.random.uniform(_TIME_LIMIT)
+        speed = 0 if self._zero_start[index] else np.random.uniform(_MAX_INITIAL_SPEED)
+
         move_angle = np.random.uniform(2 * np.pi)
         self.player_state.vel[index, 0] = speed * np.cos(move_angle)
         self.player_state.vel[index, 1] = speed * np.sin(move_angle)
@@ -203,22 +216,21 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         
         self._step_num += 1
 
-        return self._get_obs(), reward, done, [{} for _ in range(self.num_envs)]
+        return self._get_obs(), reward, done, [{'zero_start': self._zero_start[i]} for i in range(self.num_envs)]
         
     def get_unwrapped(self):
         return []
 
 
-def _make_observation(client, start_time):
-    t = _TIME_LIMIT - (client.time - start_time)
+def _make_observation(client, time_remaining):
     yaw = 180 * client.angles[1] / np.pi
     vel = np.array(client.velocity)
     z_pos = client.player_origin[2]
-    return np.concatenate([[t], [yaw], [z_pos], vel]) / _OBS_SCALE
+    return np.concatenate([[time_remaining], [yaw], [z_pos], vel]) / _OBS_SCALE
 
 
-def _apply_action(client, action_to_move, action, time):
-    (yaw,), (smove,), (fmove,) = action_to_move.map([[a[0] for a in action]], np.float32(time)[None])
+def _apply_action(client, action_to_move, action, time_remaining):
+    (yaw,), (smove,), (fmove,) = action_to_move.map([[a[0] for a in action]], np.float32(time_remaining)[None])
     yaw *= np.pi / 180
 
     buttons = np.where(client.velocity[2] <= 16, 2, 0)
@@ -241,12 +253,13 @@ async def eval_coro(port, trainer, demo_fname):
         await client.wait_for_movement(client.view_entity)
         start_time = client.time
         for _ in range(358):
-            obs = _make_observation(client, start_time)
+            time_remaining = _TIME_LIMIT - (client.time - start_time)
+            obs = _make_observation(client, time_remaining)
             obs_list.append(obs)
             action = trainer.compute_action(obs)
             action_list.append(action)
 
-            _apply_action(client, action_to_move, action, client.time - start_time)
+            _apply_action(client, action_to_move, action, time_remaining)
             await client.wait_for_movement(client.view_entity)
 
         demo.stop_recording()
