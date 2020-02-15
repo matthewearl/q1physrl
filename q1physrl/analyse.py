@@ -70,7 +70,7 @@ def eval_sim(trainer):
 
     while not done:
         a = trainer.compute_action(o)
-        (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([a], e._time)
+        (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([a], e._time_remaining)
         player_states.append(e.player_state)
         (o,), (r,), (done,), _ = e.vector_step([a])
         obs.append(o)

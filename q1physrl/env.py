@@ -28,12 +28,15 @@ _INITIAL_STATE = {'z_pos': np.float32(32.843201),
                   'vel': np.array([0, 0, -12], dtype=np.float32),
                   'on_ground': np.bool(False),
                   'jump_released': np.bool(True)}
-_INITIAL_YAW = np.float32(90)
+_INITIAL_YAW_RANGE = (0, 360)
+_INITIAL_YAW_ZERO = np.float32(90)
+_ZERO_START_PROB = 0.1
 _TIME_LIMIT = 5.  # seconds
 
 _OBS_SCALE = [_TIME_LIMIT, 90., 100, 200, 200, 200]
 
 _KEY_PRESS_DELAY = 0.3   # minimum time between consecutive presses of the same key
+_MAX_INITIAL_SPEED = np.float32(0)  # units per second
 
 
 class Key(enum.IntEnum):
@@ -65,16 +68,16 @@ class ActionToMove:
         # trainer.compute_actions() and trainer.train() return data in slightly different formats.
         return np.array([[np.ravel(x)[0] for x in a] for a in actions])
 
-    def map(self, actions, time):
+    def map(self, actions, time_remaining):
         actions = self._fix_actions(actions)
         key_actions = actions[:, :4].astype(np.int)
         mouse_x_action = actions[:, 4]
 
-        elapsed = time[:, None] >= self._last_key_press_time + _KEY_PRESS_DELAY
+        elapsed = (_TIME_LIMIT - time_remaining[:, None]) >= self._last_key_press_time + _KEY_PRESS_DELAY
         keys = key_actions & (elapsed | self._last_keys)
         self._last_key_press_time = np.where(
             keys & ~self._last_keys,
-            time[:, None],
+            (_TIME_LIMIT - time_remaining[:, None]),
             self._last_key_press_time
         )
         self._last_keys = keys
@@ -88,22 +91,24 @@ class ActionToMove:
 
         return self._yaw, smove.astype(np.int), fmove.astype(np.int), jump.astype(np.bool)
 
-    def vector_reset(self):
+    def vector_reset(self, yaw=_INITIAL_YAW_ZERO):
         self._last_key_press_time = np.full((self._num_envs, len(Key)), -_KEY_PRESS_DELAY)
         self._last_keys = np.full((self._num_envs, len(Key)), False)
-        self._yaw = np.full((self._num_envs,), _INITIAL_YAW, dtype=np.float32)
 
-    def reset_at(self, index):
+        self._yaw = np.full((self._num_envs,), yaw, dtype=np.float32)
+
+    def reset_at(self, index, yaw=_INITIAL_YAW_ZERO):
         self._last_key_press_time[index] = -_KEY_PRESS_DELAY
         self._last_keys[index] = False
-        self._yaw[index] = _INITIAL_YAW
+        self._yaw[index] = yaw
 
 
 class PhysEnv(ray.rllib.env.VectorEnv):
     player_state: phys.PlayerState
     _yaw: np.ndarray
-    _time: np.ndarray
+    _time_remaining: np.ndarray
     _step_num: int
+    _zero_start: np.ndarray
 
     def _round_vel(self, v):
         # See sv_main.c : SV_WriteClientdataToMessage
@@ -119,7 +124,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
     def _get_obs(self):
         ps = self.player_state
 
-        t = _TIME_LIMIT - self._time
+        t = self._time_remaining
         vel = self._round_vel(ps.vel)
         z_pos = self._round_origin(ps.z_pos)
 
@@ -128,7 +133,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
     def _get_obs_at(self, index):
         ps = self.player_state
-        t = _TIME_LIMIT - self._time[index]
+        t = self._time_remaining[index]
         z_pos = self._round_origin(ps.z_pos[index])
         vel = self._round_vel(ps.vel[index])
         obs = np.concatenate([t[None], self._yaw[index][None], z_pos[None], vel], axis=0)
@@ -156,25 +161,46 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.player_state = phys.PlayerState(
             **{k: np.stack([v for _ in range(self.num_envs)]) for k, v in _INITIAL_STATE.items()})
 
-        self._yaw = np.full((self.num_envs,), _INITIAL_YAW, dtype=np.float32)
-        self._time = np.zeros((self.num_envs,), np.float32)
+        self._zero_start = np.random.random(size=(self.num_envs,)) < _ZERO_START_PROB
 
-        self._action_to_move.vector_reset()
+        self._yaw = np.where(self._zero_start,
+                             _INITIAL_YAW_ZERO,
+                             np.random.uniform(*_INITIAL_YAW_RANGE, size=(self.num_envs,)))
+        self._time_remaining = np.where(self._zero_start,
+                                        _TIME_LIMIT,
+                                        np.random.uniform(_TIME_LIMIT, size=(self.num_envs,)))
+        speed = np.where(self._zero_start,
+                         0,
+                         np.random.uniform(_MAX_INITIAL_SPEED, size=(self.num_envs,)))
+
+        move_angle = np.random.uniform(2 * np.pi, size=(self.num_envs,))
+        self.player_state.vel[:, 0] = speed * np.cos(move_angle)
+        self.player_state.vel[:, 1] = speed * np.sin(move_angle)
+
+
+        self._action_to_move.vector_reset(self._yaw)
 
         return self._get_obs()
 
     def reset_at(self, index):
         for k, v in _INITIAL_STATE.items():
             getattr(self.player_state, k)[index] = v
-        self._yaw[index] = _INITIAL_YAW
-        self._time[index] = 0.
 
-        self._action_to_move.reset_at(index)
+        self._zero_start[index] = np.random.random() <_ZERO_START_PROB
+        self._yaw[index] = _INITIAL_YAW_ZERO if self._zero_start[index] else np.random.uniform(*_INITIAL_YAW_RANGE)
+        self._time_remaining[index] = _TIME_LIMIT if self._zero_start[index] else np.random.uniform(_TIME_LIMIT)
+        speed = 0 if self._zero_start[index] else np.random.uniform(_MAX_INITIAL_SPEED)
+
+        move_angle = np.random.uniform(2 * np.pi)
+        self.player_state.vel[index, 0] = speed * np.cos(move_angle)
+        self.player_state.vel[index, 1] = speed * np.sin(move_angle)
+
+        self._action_to_move.reset_at(index, self._yaw[index])
 
         return self._get_obs_at(index)
 
     def vector_step(self, actions):
-        self._yaw, smove, fmove, jump = self._action_to_move.map(actions, self._time)
+        self._yaw, smove, fmove, jump = self._action_to_move.map(actions, self._time_remaining)
 
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
@@ -187,27 +213,26 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.player_state = phys.apply(inputs, self.player_state)
 
         reward = _TIME_DELTA * self.player_state.vel[:, 1]
-        self._time += _TIME_DELTA
-        done = self._time > _TIME_LIMIT
+        self._time_remaining -= _TIME_DELTA
+        done = self._time_remaining < 0
         
         self._step_num += 1
 
-        return self._get_obs(), reward, done, [{} for _ in range(self.num_envs)]
+        return self._get_obs(), reward, done, [{'zero_start': self._zero_start[i]} for i in range(self.num_envs)]
         
     def get_unwrapped(self):
         return []
 
 
-def _make_observation(client, start_time):
-    t = _TIME_LIMIT - (client.time - start_time)
+def _make_observation(client, time_remaining):
     yaw = 180 * client.angles[1] / np.pi
     vel = np.array(client.velocity)
     z_pos = client.player_origin[2]
-    return np.concatenate([[t], [yaw], [z_pos], vel]) / _OBS_SCALE
+    return np.concatenate([[time_remaining], [yaw], [z_pos], vel]) / _OBS_SCALE
 
 
-def _apply_action(client, action_to_move, action, time):
-    (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([[a[0] for a in action]], np.float32(time)[None])
+def _apply_action(client, action_to_move, action, time_remaining):
+    (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([[a[0] for a in action]], np.float32(time_remaining)[None])
     yaw *= np.pi / 180
 
     buttons = np.where(jump, 2, 0)
@@ -230,12 +255,13 @@ async def eval_coro(port, trainer, demo_fname):
         await client.wait_for_movement(client.view_entity)
         start_time = client.time
         for _ in range(358):
-            obs = _make_observation(client, start_time)
+            time_remaining = _TIME_LIMIT - (client.time - start_time)
+            obs = _make_observation(client, time_remaining)
             obs_list.append(obs)
             action = trainer.compute_action(obs)
             action_list.append(action)
 
-            _apply_action(client, action_to_move, action, client.time - start_time)
+            _apply_action(client, action_to_move, action, time_remaining)
             await client.wait_for_movement(client.view_entity)
 
         demo.stop_recording()
