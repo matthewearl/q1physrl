@@ -1,5 +1,6 @@
-import sys
+import copy
 import dataclasses
+import sys
 from pprint import pprint
 
 import numpy as np
@@ -15,23 +16,48 @@ except ImportError:
     wandb = None
 
 
+_ENV_CONFIG = q1physrl.env.Config(
+    num_envs=100,
+    auto_jump=False,
+    time_limit=5,
+    key_press_delay=0.3,
+    initial_yaw_range=(0, 360),
+    max_initial_speed=700.,
+    zero_start_prob=0.1
+)
+
+
+_TRAINER_CLASSES = {
+    "PPOTrainer": ray.rllib.agents.ppo.PPOTrainer
+}
+
+
+def make_run_config(env_config):
+    return {
+        "trainer_class": "PPOTrainer",
+        "trainer_config": {
+            "env_config": dataclasses.asdict(env_config),
+            "gamma": 0.99,
+            "lr": 5e-6,
+            "entropy_coeff": 1e-2, 
+            "num_workers": 4,
+            "train_batch_size": 10_000,
+        }
+    }
+
+
 def _on_episode_end(info):
     episode = info["episode"]
     if episode.last_info_for()['zero_start']:
         episode.custom_metrics['zero_start_total_reward'] = episode.total_reward
 
 
-def make_trainer():
-    return ray.rllib.agents.ppo.PPOTrainer(
-        env=q1physrl.env.PhysEnv,
-        config={"env_config": {"num_envs": 100}, "gamma": 0.99, "lr": 5e-6, "entropy_coeff": 1e-2, 
-                "num_workers": 4,
-                "train_batch_size": 100_000,
-                "callbacks": {
-                    "on_episode_end": _on_episode_end,
-                }
-               }
-    )
+def make_trainer(run_config):
+    cls = _TRAINER_CLASSES[run_config['trainer_class']]
+    trainer_config = copy.deepcopy(run_config['trainer_config'])
+    trainer_config['callbacks'] = {'on_episode_end': _on_episode_end}
+
+    return cls(env=q1physrl.env.PhysEnv, config=trainer_config)
 
 
 _STATS_TO_TRACK = [
@@ -40,6 +66,7 @@ _STATS_TO_TRACK = [
     'custom_metrics/zero_start_total_reward_mean',
 ]
 
+
 _STATS_TO_PRINT = _STATS_TO_TRACK + ['info/learner/default_policy/entropy', 'episode_len_mean']
 
 
@@ -47,7 +74,10 @@ def _get_stat(stats, k):
     parts = k.split('/')
     x = stats
     for part in parts:
-        x = x[part]
+        try:
+            x = x[part]
+        except KeyError:
+            return np.nan
     return x
 
 
@@ -58,12 +88,16 @@ class _Stat:
 
 
 def train():
+    run_config = make_run_config(_ENV_CONFIG)
+
     if wandb is not None:
-        wandb.init(project="q1physrl", sync_tensorboard=True)
+        wandb.init(project="q1physrl",
+                   config=run_config,
+                   sync_tensorboard=True)
 
     ray.init()
 
-    trainer = make_trainer()
+    trainer = make_trainer(run_config)
 
     if len(sys.argv) >= 2:
         trainer.restore(sys.argv[1])

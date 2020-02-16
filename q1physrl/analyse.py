@@ -52,11 +52,11 @@ class EvalSimResult:
     jump: np.ndarray
 
 
-def eval_sim(trainer):
-    e = env.PhysEnv({'num_envs': 1})
+def eval_sim(trainer, env_config):
+    e = env.PhysEnv(dataclasses.asdict(env_config))
     o, = e.vector_reset()
-    action_to_move = env.ActionToMove(1)
-    action_to_move.vector_reset()
+    action_to_move = env.ActionToMove(env_config)
+    action_to_move.vector_reset(e._yaw)
 
     obs = []
     reward = []
@@ -70,7 +70,8 @@ def eval_sim(trainer):
 
     while not done:
         a = trainer.compute_action(o)
-        (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([a], e._time_remaining)
+        (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map(
+                [a], o[None, env.Obs.Z_VEL], e._time_remaining)
         player_states.append(e.player_state)
         (o,), (r,), (done,), _ = e.vector_step([a])
         obs.append(o)
