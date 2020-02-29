@@ -23,7 +23,8 @@ _ENV_CONFIG = q1physrl.env.Config(
     key_press_delay=0.3,
     initial_yaw_range=(0, 360),
     max_initial_speed=700.,
-    zero_start_prob=0.1
+    zero_start_prob=1e-2,
+    action_range=0.1,
 )
 
 
@@ -39,9 +40,12 @@ def make_run_config(env_config):
             "env_config": dataclasses.asdict(env_config),
             "gamma": 0.99,
             "lr": 5e-6,
-            "entropy_coeff": 1e-2, 
+            "entropy_coeff": 1e-1, 
             "num_workers": 4,
             "train_batch_size": 10_000,
+            "kl_target": 3.6e-2,
+            "lambda": 0.95,
+            "vf_clip_param": 100,
         }
     }
 

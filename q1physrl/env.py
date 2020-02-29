@@ -20,6 +20,7 @@ __all__ = (
     'Key',
     'Obs',
     'PhysEnv',
+    'SinglePhysEnv',
 )
 
 
@@ -58,6 +59,7 @@ class Config:
     initial_yaw_range: Tuple[float, float]
     max_initial_speed: float
     zero_start_prob: float
+    action_range: float = _MAX_YAW_SPEED * _TIME_DELTA
     time_limit: float = 5
     key_press_delay: float = 0.3
 
@@ -79,7 +81,8 @@ class ActionToMove:
     def map(self, actions, z_vel, time_remaining):
         actions = self._fix_actions(actions)
         key_actions = actions[:, :self._num_action_keys].astype(np.int)
-        mouse_x_action = actions[:, self._num_action_keys]
+        max_yaw_delta = _MAX_YAW_SPEED * _TIME_DELTA
+        mouse_x_action = actions[:, self._num_action_keys] * max_yaw_delta / self._config.action_range
 
         elapsed = (self._config.time_limit - time_remaining[:, None] >=
                     self._last_key_press_time + self._config.key_press_delay)
@@ -117,6 +120,24 @@ class ActionToMove:
 
 def _get_obs_scale(config): 
     return [config.time_limit, 90., 100, 200, 200, 200]
+
+
+class SinglePhysEnv(gym.Env):
+    def __init__(self, config):
+        config = dict(config)
+        config['num_envs'] = 1
+
+        self._env = PhysEnv(config)
+        self.observation_space = self._env.observation_space
+        self.action_space = self._env.action_space
+
+    def step(self, action):
+        (obs,), (reward,), (done,), (info,) = self._env.vector_step([action])
+        return obs, reward, done, info
+
+    def reset(self):
+        (obs,) = self._env.vector_reset()
+        return obs
 
 
 class PhysEnv(ray.rllib.env.VectorEnv):
@@ -158,15 +179,18 @@ class PhysEnv(ray.rllib.env.VectorEnv):
     def __init__(self, config):
         self._config = Config(**config)
         self.num_envs = self._config.num_envs
-        max_yaw_delta = _MAX_YAW_SPEED * _TIME_DELTA
         num_keys = len(Key) - 1 if self._config.auto_jump else len(Key)
         self.action_space = gym.spaces.Tuple([
             *(gym.spaces.Discrete(2) for _ in range(num_keys)),
-            gym.spaces.Box(low=-max_yaw_delta, high=max_yaw_delta, shape=(1,), dtype=np.float32),
+            gym.spaces.Box(low=-self._config.action_range, high=self._config.action_range,
+                           shape=(1,), dtype=np.float32),
         ])
 
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(6,), dtype=np.float32)
+        self.reward_range = (-1000 * _TIME_DELTA, 1000 * _TIME_DELTA)
+        self.metadata = {}
+
         self._obs_scale = _get_obs_scale(self._config)
 
         self._action_to_move = ActionToMove(self._config)
