@@ -62,6 +62,10 @@ class EvalSimResult:
         return 180. * np.arctan2(self.player_state.vel[:, 1], self.player_state.vel[:, 0]) / np.pi
 
     @property
+    def wish_angle(self):
+        return self.yaw - (180. * np.arctan2(self.smove, self.fmove) / np.pi)
+
+    @property
     def hypothetical_delta_speeds(self):
         """Get hypthetical speed increases for this run, were a given action taken.
 
@@ -79,7 +83,7 @@ class EvalSimResult:
                 roll=np.zeros_like(move_angle),
                 fmove=np.full_like(move_angle, 800.),
                 smove=np.zeros_like(move_angle),
-                button2=self.player_state.vel[:, 2] <= 16,
+                button2=self.jump,
                 time_delta=np.full_like(move_angle, 0.014),
             )
             speed_before = np.linalg.norm(self.player_state.vel[:, :2], axis=1)
@@ -92,8 +96,7 @@ class EvalSimResult:
 
     def wish_angle_yaw_plot(self, figsize=(20, 16)):
         delta_speeds = self.hypothetical_delta_speeds
-
-        wish_angle = self.yaw + (180. * np.arctan2(self.smove, self.fmove) / np.pi)
+        wish_angle = self.wish_angle
 
         vmin = np.min(delta_speeds)
         vmax = np.max(delta_speeds)
@@ -141,15 +144,18 @@ def eval_sim(trainer, env_config):
         a = trainer.compute_action(o)
         (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map(
                 [a], o[None, env.Obs.Z_VEL], e._time_remaining)
+
         player_states.append(e.player_state)
-        (o,), (r,), (done,), _ = e.vector_step([a])
         obs.append(o)
         actions.append(a)
-        reward.append(r)
         yaws.append(yaw)
         smoves.append(smove)
         fmoves.append(fmove)
         jumps.append(jump)
+
+        (o,), (r,), (done,), _ = e.vector_step([a])
+
+        reward.append(r)
         
     return EvalSimResult(
         player_state=phys.PlayerState.concatenate(player_states),
