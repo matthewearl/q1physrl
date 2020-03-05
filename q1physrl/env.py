@@ -62,6 +62,7 @@ class Config:
     action_range: float = _MAX_YAW_SPEED * _TIME_DELTA
     time_limit: float = 5
     key_press_delay: float = 0.3
+    discrete_yaw_steps: int = -1    # -1 = continuous
 
 
 class ActionToMove:
@@ -81,8 +82,13 @@ class ActionToMove:
     def map(self, actions, z_vel, time_remaining):
         actions = self._fix_actions(actions)
         key_actions = actions[:, :self._num_action_keys].astype(np.int)
+
         max_yaw_delta = _MAX_YAW_SPEED * _TIME_DELTA
-        mouse_x_action = actions[:, self._num_action_keys] * max_yaw_delta / self._config.action_range
+        yaw_steps = self._config.discrete_yaw_steps
+        if yaw_steps == -1:
+            mouse_x_action = actions[:, self._num_action_keys] * max_yaw_delta / self._config.action_range
+        else:
+            mouse_x_action = (actions[:, self._num_action_keys] - yaw_steps) * max_yaw_delta / yaw_steps
 
         elapsed = (self._config.time_limit - time_remaining[:, None] >=
                     self._last_key_press_time + self._config.key_press_delay)
@@ -180,12 +186,13 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self._config = Config(**config)
         self.num_envs = self._config.num_envs
         num_keys = len(Key) - 1 if self._config.auto_jump else len(Key)
-        self.action_space = gym.spaces.Tuple([
-            *(gym.spaces.Discrete(2) for _ in range(num_keys)),
-            gym.spaces.Box(low=-self._config.action_range, high=self._config.action_range,
-                           shape=(1,), dtype=np.float32),
-        ])
-
+        
+        if self._config.discrete_yaw_steps == -1:
+            yaw_action_space = gym.spaces.Box(low=-self._config.action_range, high=self._config.action_range,
+                                              shape=(1,), dtype=np.float32)
+        else:
+            yaw_action_space = gym.spaces.Discrete(2 * self._config.discrete_yaw_steps + 1)
+        self.action_space = gym.spaces.Tuple([*(gym.spaces.Discrete(2) for _ in range(num_keys)), yaw_action_space]) 
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(6,), dtype=np.float32)
         self.reward_range = (-1000 * _TIME_DELTA, 1000 * _TIME_DELTA)
@@ -286,16 +293,9 @@ def _apply_action(client, action_to_move, action, time_remaining):
                 up=0, buttons=buttons, impulse=0)
 
 
-async def eval_coro(time_limit, auto_jump, port, trainer, demo_file):
+async def eval_coro(config, port, trainer, demo_file):
     client = await pyquake.client.AsyncClient.connect("localhost", port)
-    config = Config(
-        num_envs=1,
-        auto_jump=auto_jump,
-        time_limit=time_limit,
-        initial_yaw_range=(_INITIAL_YAW_ZERO, _INITIAL_YAW_ZERO),
-        max_initial_speed=0,
-        zero_start_prob=1,
-    )
+    config = Config({**config, 'num_envs': 1})
     action_to_move = ActionToMove(config)
     action_to_move.vector_reset(np.array([_INITIAL_YAW_ZERO]))
 
@@ -310,7 +310,7 @@ async def eval_coro(time_limit, auto_jump, port, trainer, demo_file):
         start_time = client.time
         time_remaining = None
         while time_remaining is None or time_remaining >= 0:
-            time_remaining = time_limit - (client.time - start_time)
+            time_remaining = config['time_limit'] - (client.time - start_time)
             obs = _make_observation(client, time_remaining, config)
             obs_list.append(obs)
             action = trainer.compute_action(obs)
