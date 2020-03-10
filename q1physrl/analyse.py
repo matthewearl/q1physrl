@@ -111,7 +111,8 @@ class EvalSimResult:
         plt.imshow(c, cmap='seismic', norm=norm,
                    extent=(0, delta_speeds.shape[1], 180, -180)
                   )
-        plt.plot(wish_angle - self.move_angle, color='#00ff00')
+        wrapped_angle = ((wish_angle - self.move_angle + 180) % 360) - 180
+        plt.plot(wrapped_angle, color='#00ff00')
         plt.axhline(0)
         plt.axhline(90)
         plt.axhline(-45, alpha=0.5)
@@ -123,6 +124,7 @@ class EvalSimResult:
         plt.plot(self.fmove / 20 + 100, color='#ffff00')
 
         plt.show()
+
 
 def eval_sim(trainer, env_config):
     e = env.PhysEnv(dataclasses.asdict(env_config))
@@ -175,11 +177,12 @@ def plot_all_checkpoints():
     config = env.Config(
         num_envs=1,
         auto_jump=False,
-        time_limit=5,
+        time_limit=10,
         key_press_delay=0.3,
         initial_yaw_range=(0, 360),
         max_initial_speed=700,
         zero_start_prob=1.0,
+        action_range=1.0
     )
 
     checkpoint_dir = Path(sys.argv[1])

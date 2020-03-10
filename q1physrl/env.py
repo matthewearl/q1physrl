@@ -25,8 +25,6 @@ __all__ = (
 
 
 _TIME_DELTA = np.float32(0.014)
-_FMOVE_MAX = np.float32(800)  # units per second
-_SMOVE_MAX = np.float32(700)  # units per second
 _MAX_YAW_SPEED = np.float32(2 * 360)  # degrees per second
 _INITIAL_STATE = {'z_pos': np.float32(32.843201),
                   'vel': np.array([0, 0, -12], dtype=np.float32),
@@ -63,6 +61,10 @@ class Config:
     time_limit: float = 5
     key_press_delay: float = 0.3
     discrete_yaw_steps: int = -1    # -1 = continuous
+    speed_reward: bool = False  # reward speed rather than velocity in y dir.
+    fmove_max: float = 800.  # units per second
+    smove_max: float = 700.  # units per second
+    hover: bool = False     # No gravity, fixed initial speed
 
 
 class ActionToMove:
@@ -103,8 +105,8 @@ class ActionToMove:
         keys_int = keys.astype(np.int)
         self._yaw = self._yaw + mouse_x_action
         strafe_keys = keys_int[:, Key.STRAFE_RIGHT] - keys_int[:, Key.STRAFE_LEFT]
-        smove = _SMOVE_MAX * strafe_keys
-        fmove = _FMOVE_MAX * keys_int[:, Key.FORWARD]
+        smove = np.float32(self._config.smove_max) * strafe_keys
+        fmove = np.float32(self._config.fmove_max) * keys_int[:, Key.FORWARD]
         if self._config.auto_jump:
             jump = z_vel <= 16
         else:
@@ -220,7 +222,14 @@ class PhysEnv(ray.rllib.env.VectorEnv):
                          0,
                          np.random.uniform(self._config.max_initial_speed, size=(self.num_envs,)))
 
+        if self._config.hover:
+            speed[:] = 320
+
         move_angle = np.random.uniform(2 * np.pi, size=(self.num_envs,))
+
+        if self._config.hover:
+            move_angle[:] = np.pi / 2
+
         self.player_state.vel[:, 0] = speed * np.cos(move_angle)
         self.player_state.vel[:, 1] = speed * np.sin(move_angle)
 
@@ -249,6 +258,10 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         return self._get_obs_at(index)
 
     def vector_step(self, actions):
+        if self._config.hover:
+            self.player_state.vel[:, 2] = 0
+            self.player_state.z_pos[:] = 100
+
         z_vel = self.player_state.vel[:, 2]
         self._yaw, smove, fmove, jump = self._action_to_move.map(actions, z_vel, self._time_remaining)
 
@@ -262,7 +275,11 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
         self.player_state = phys.apply(inputs, self.player_state)
 
-        reward = _TIME_DELTA * self.player_state.vel[:, 1]
+        if self._config.speed_reward:
+            reward = _TIME_DELTA * np.linalg.norm(self.player_state.vel[:, :2], axis=1)
+        else:
+            reward = _TIME_DELTA * self.player_state.vel[:, 1]
+
         self._time_remaining -= _TIME_DELTA
         done = self._time_remaining < 0
         

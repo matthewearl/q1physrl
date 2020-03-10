@@ -1,15 +1,20 @@
 import copy
 import dataclasses
 import sys
+import time
 from pprint import pprint
+
+import matplotlib.pyplot as plt
 
 import numpy as np
 import ray
 import ray.rllib
 
+import q1physrl.analyse
 import q1physrl.env
 
 try:
+    #import tensorboardX    # for some reason this is required with ray==0.8.2 for wandb to work
     import wandb
     from wandb.tensorflow import WandbHook
 except ImportError:
@@ -19,17 +24,40 @@ except ImportError:
 _ENV_CONFIG = q1physrl.env.Config(
     num_envs=100,
     auto_jump=False,
-    time_limit=5,
+    time_limit=10,
     key_press_delay=0.3,
     initial_yaw_range=(0, 360),
     max_initial_speed=700.,
     zero_start_prob=1e-2,
-    action_range=0.1,
+    action_range=1.0,
+    discrete_yaw_steps=-1,
+    speed_reward=True,
+    fmove_max=800,
+    smove_max=1060,
 )
 
 
 _TRAINER_CLASSES = {
-    "PPOTrainer": ray.rllib.agents.ppo.PPOTrainer
+    "PPOTrainer": ray.rllib.agents.ppo.PPOTrainer,
+    "SACTrainer": ray.rllib.agents.sac.SACTrainer
+}
+
+
+_SAC_CONFIG = {
+    "gamma": 0.99,
+    "num_workers": 2,
+    "target_entropy": 2,
+}
+
+_PPO_CONFIG = {
+    "gamma": 0.99,
+    "lr": 5e-6,
+    "entropy_coeff": 1e-4, 
+    "num_workers": 4,
+    "train_batch_size": 50_000,
+    "kl_target": 3.6e-3,
+    "lambda": 0.95,
+    "vf_clip_param": 100,
 }
 
 
@@ -38,14 +66,7 @@ def make_run_config(env_config):
         "trainer_class": "PPOTrainer",
         "trainer_config": {
             "env_config": dataclasses.asdict(env_config),
-            "gamma": 0.99,
-            "lr": 5e-6,
-            "entropy_coeff": 1e-1, 
-            "num_workers": 4,
-            "train_batch_size": 10_000,
-            "kl_target": 3.6e-2,
-            "lambda": 0.95,
-            "vf_clip_param": 100,
+            **_PPO_CONFIG,
         }
     }
 
@@ -94,10 +115,12 @@ class _Stat:
 def train():
     run_config = make_run_config(_ENV_CONFIG)
 
+    run_id = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     if wandb is not None:
-        wandb.init(project="q1physrl",
-                   config=run_config,
-                   sync_tensorboard=True)
+        run = wandb.init(project="q1physrl",
+                         config=run_config,
+                         sync_tensorboard=True)
+        run_id = f"{run_id}_{run.id}"
 
     ray.init()
 
@@ -128,5 +151,20 @@ def train():
                     best_stats[k] = _Stat(_get_stat(stats, k), fname)
             print('Best:')
             pprint(best_stats)
+
+        # Periodically record some plots
+        if wandb is not None and i % 1 == 0:
+            start = time.perf_counter()
+            eval_config = dataclasses.replace(_ENV_CONFIG, num_envs=1, zero_start_prob=1.0)
+            r = q1physrl.analyse.eval_sim(trainer, eval_config)
+            r.wish_angle_yaw_plot()
+            wandb.log({'chart': plt})
+
+            output_path = f"plots/{run_id}/{i:04d}.png"
+            plt.savefig(output_path)
+
+            plt.close()
+            print(f'Took {time.perf_counter() - start} seconds to record plot')
+            
         i += 1
 
