@@ -1,7 +1,9 @@
 import copy
 import dataclasses
+import datetime
 import sys
 import time
+from pathlib import Path
 from pprint import pprint
 
 import matplotlib.pyplot as plt
@@ -29,7 +31,7 @@ _ENV_CONFIG = q1physrl.env.Config(
     initial_yaw_range=(0, 360),
     max_initial_speed=700.,
     zero_start_prob=1e-2,
-    action_range=1.0,
+    action_range=100.0,
     discrete_yaw_steps=-1,
     speed_reward=True,
     fmove_max=800,
@@ -52,7 +54,7 @@ _SAC_CONFIG = {
 _PPO_CONFIG = {
     "gamma": 0.99,
     "lr": 5e-6,
-    "entropy_coeff": 1e-4, 
+    "entropy_coeff": 1e-2, 
     "num_workers": 4,
     "train_batch_size": 50_000,
     "kl_target": 3.6e-3,
@@ -160,8 +162,10 @@ def train():
             r.wish_angle_yaw_plot()
             wandb.log({'chart': plt})
 
-            output_path = f"plots/{run_id}/{i:04d}.png"
-            plt.savefig(output_path)
+            d = Path(f"plots/{run_id}")
+            d.mkdir(parents=True, exist_ok=True)
+            output_path = d / f"{i:04d}.png"
+            plt.savefig(str(output_path))
 
             plt.close()
             print(f'Took {time.perf_counter() - start} seconds to record plot')
