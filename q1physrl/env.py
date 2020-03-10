@@ -20,6 +20,8 @@ __all__ = (
     'Key',
     'Obs',
     'PhysEnv',
+    'SimpleConfig',
+    'SimplePhysEnv',
     'SinglePhysEnv',
 )
 
@@ -48,6 +50,7 @@ class Obs(enum.IntEnum):
     X_VEL = enum.auto()
     Y_VEL = enum.auto()
     Z_VEL = enum.auto()
+
 
 
 @dataclasses.dataclass(frozen=True)
@@ -287,6 +290,93 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
         return self._get_obs(), reward, done, [{'zero_start': self._zero_start[i]} for i in range(self.num_envs)]
         
+    def get_unwrapped(self):
+        return []
+
+
+@dataclasses.dataclass(frozen=True)
+class SimpleConfig:
+    num_envs: int
+    time_limit: float = 5
+    action_range: float = _MAX_YAW_SPEED * _TIME_DELTA
+
+
+_SIMPLE_INITIAL_STATE = {'z_pos': np.float32(50),
+                         'vel': np.array([0, 320, 0], dtype=np.float32),
+                         'on_ground': np.bool(False),
+                         'jump_released': np.bool(True)}
+
+class SimplePhysEnv(ray.rllib.env.VectorEnv):
+    """An environment in which only yaw can be controlled, and the initial state doesn't change"""
+
+    _yaw: np.ndarray
+    _time_remaining: np.ndarray
+    _player_state: phys.PlayerState
+
+    def __init__(self, config):
+        self._config = SimpleConfig(**config)
+        self.num_envs = self._config.num_envs
+        self.action_space = gym.spaces.Box(
+                low=-self._config.action_range,
+                high=self._config.action_range,
+                shape=(1,),
+                dtype=np.float32)
+        self.observation_space = gym.spaces.Box(
+                low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
+        self._player_state = phys.PlayerState(
+            **{k: np.stack([v
+                            for _ in range(self.num_envs)])
+                            for k, v in _SIMPLE_INITIAL_STATE.items()})
+
+    @property
+    def _obs_scale(self):
+        return [self._config.time_limit, 90]
+
+    def _get_obs(self):
+        return np.stack([self._time_remaining, self._yaw], axis=1) / self._obs_scale
+
+    def _get_obs_at(self, index):
+        return np.array([self._time_remaining[index], self._yaw[index]]) / self._obs_scale
+
+    def vector_reset(self):
+        self._time_remaining = np.full((self.num_envs,), self._config.time_limit, dtype=np.float32)
+        self._yaw = np.full((self.num_envs,), _INITIAL_YAW_ZERO, dtype=np.float32)
+
+        return self._get_obs()
+
+    def reset_at(self, index):
+        self._time_remaining[index] = self._config.time_limit
+        self._yaw[index] = _INITIAL_YAW_ZERO
+
+        return self._get_obs_at(index)
+
+    def vector_step(self, actions):
+        max_yaw_delta = _MAX_YAW_SPEED * _TIME_DELTA
+
+        mouse_x_action = np.concatenate(actions) * max_yaw_delta / self._config.action_range
+        self._yaw = self._yaw + mouse_x_action
+
+        pitch = np.zeros((self.num_envs,), dtype=np.float32)
+        roll = np.zeros((self.num_envs,), dtype=np.float32)
+        fmove = np.full((self.num_envs,), 800., dtype=np.float32)
+        smove = np.zeros((self.num_envs,), dtype=np.float32)
+        button2 = np.full((self.num_envs,), False)
+        time_delta = np.full((self.num_envs,), _TIME_DELTA)
+
+        inputs = phys.Inputs(yaw=self._yaw, pitch=pitch, roll=roll, fmove=fmove, smove=smove,
+                             button2=button2, time_delta=time_delta)
+
+        next_player_state = phys.apply(inputs, self._player_state)
+
+        reward = _TIME_DELTA * np.linalg.norm(next_player_state.vel[:, :2], axis=1)
+
+        self._time_remaining -= _TIME_DELTA
+        done = self._time_remaining < 0
+
+        if np.any(np.isnan(reward)):
+            print(reward)
+        return self._get_obs(), reward, done, [{} for i in range(self.num_envs)]
+
     def get_unwrapped(self):
         return []
 

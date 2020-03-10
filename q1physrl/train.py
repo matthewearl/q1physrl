@@ -1,4 +1,5 @@
 import copy
+import datetime
 import dataclasses
 import sys
 import time
@@ -19,7 +20,7 @@ try:
     from wandb.tensorflow import WandbHook
 except ImportError:
     wandb = None
-
+wandb = None
 
 _ENV_CONFIG = q1physrl.env.Config(
     num_envs=100,
@@ -34,6 +35,14 @@ _ENV_CONFIG = q1physrl.env.Config(
     speed_reward=True,
     fmove_max=800,
     smove_max=1060,
+)
+
+
+_ENV_CLASS = q1physrl.env.SimplePhysEnv
+_ENV_CONFIG = q1physrl.env.SimpleConfig(
+    num_envs=100,
+    time_limit=10.,
+    action_range=1.0,
 )
 
 
@@ -73,7 +82,7 @@ def make_run_config(env_config):
 
 def _on_episode_end(info):
     episode = info["episode"]
-    if episode.last_info_for()['zero_start']:
+    if episode.last_info_for().get('zero_start', False):
         episode.custom_metrics['zero_start_total_reward'] = episode.total_reward
 
 
@@ -82,7 +91,7 @@ def make_trainer(run_config):
     trainer_config = copy.deepcopy(run_config['trainer_config'])
     trainer_config['callbacks'] = {'on_episode_end': _on_episode_end}
 
-    return cls(env=q1physrl.env.PhysEnv, config=trainer_config)
+    return cls(env=_ENV_CLASS, config=trainer_config)
 
 
 _STATS_TO_TRACK = [
