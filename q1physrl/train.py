@@ -17,13 +17,14 @@ import q1physrl.analyse
 import q1physrl.env
 
 try:
-    #import tensorboardX    # for some reason this is required with ray==0.8.2 for wandb to work
+    import tensorboardX    # for some reason this is required with ray==0.8.2 for wandb to work
     import wandb
     from wandb.tensorflow import WandbHook
 except ImportError:
     wandb = None
-wandb = None
+#wandb = None
 
+_ENV_CLASS = q1physrl.env.PhysEnv
 _ENV_CONFIG = q1physrl.env.Config(
     num_envs=100,
     auto_jump=False,
@@ -32,20 +33,20 @@ _ENV_CONFIG = q1physrl.env.Config(
     initial_yaw_range=(0, 360),
     max_initial_speed=700.,
     zero_start_prob=1e-2,
-    action_range=100.0,
+    action_range=10,
     discrete_yaw_steps=-1,
-    speed_reward=True,
+    speed_reward=False,
     fmove_max=800,
     smove_max=1060,
 )
 
 
-_ENV_CLASS = q1physrl.env.SimplePhysEnv
-_ENV_CONFIG = q1physrl.env.SimpleConfig(
-    num_envs=100,
-    time_limit=10.,
-    action_range=1.0,
-)
+#_ENV_CLASS = q1physrl.env.SimplePhysEnv
+#_ENV_CONFIG = q1physrl.env.SimpleConfig(
+#    num_envs=100,
+#    time_limit=10.,
+#    action_range=1.0,
+#)
 
 
 _TRAINER_CLASSES = {
@@ -60,15 +61,16 @@ _SAC_CONFIG = {
     "target_entropy": 2,
 }
 
+
 _PPO_CONFIG = {
+    "lr": 0.000005,
     "gamma": 0.99,
-    "lr": 5e-6,
-    "entropy_coeff": 1e-2, 
-    "num_workers": 4,
-    "train_batch_size": 50_000,
-    "kl_target": 3.6e-3,
     "lambda": 0.95,
+    "kl_target": 0.0036,
+    "num_workers": 4,
+    "entropy_coeff": 0.01,
     "vf_clip_param": 100,
+    "train_batch_size": 50000
 }
 
 
@@ -146,6 +148,7 @@ def train():
     while True:
         stats = trainer.train()
         print('Iteration:', i, 'Current:', {k: _get_stat(stats, k) for k in _STATS_TO_PRINT})
+        #pprint(stats)
 
         # Work out which (if any) stats just exceeded the previous best value.
         stats_to_save = []

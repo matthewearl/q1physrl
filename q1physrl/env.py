@@ -1,4 +1,3 @@
-import asyncio
 import dataclasses
 import enum
 from typing import Tuple
@@ -35,7 +34,6 @@ _INITIAL_STATE = {'z_pos': np.float32(32.843201),
 _INITIAL_YAW_ZERO = np.float32(90)
 
 
-
 class Key(enum.IntEnum):
     STRAFE_LEFT = 0
     STRAFE_RIGHT = enum.auto()
@@ -50,7 +48,6 @@ class Obs(enum.IntEnum):
     X_VEL = enum.auto()
     Y_VEL = enum.auto()
     Z_VEL = enum.auto()
-
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,7 +93,7 @@ class ActionToMove:
             mouse_x_action = (actions[:, self._num_action_keys] - yaw_steps) * max_yaw_delta / yaw_steps
 
         elapsed = (self._config.time_limit - time_remaining[:, None] >=
-                    self._last_key_press_time + self._config.key_press_delay)
+                   self._last_key_press_time + self._config.key_press_delay)
         keys = key_actions & (elapsed | self._last_keys)
         self._last_key_press_time = np.where(
             keys & ~self._last_keys,
@@ -118,7 +115,8 @@ class ActionToMove:
         return self._yaw, smove.astype(np.int), fmove.astype(np.int), jump.astype(np.bool)
 
     def vector_reset(self, yaw):
-        self._last_key_press_time = np.full((self._config.num_envs, self._num_action_keys), -self._config.key_press_delay)
+        self._last_key_press_time = np.full((self._config.num_envs, self._num_action_keys),
+                                            -self._config.key_press_delay)
         self._last_keys = np.full((self._config.num_envs, self._num_action_keys), False)
 
         self._yaw = np.array(yaw)
@@ -129,7 +127,7 @@ class ActionToMove:
         self._yaw[index] = yaw
 
 
-def _get_obs_scale(config): 
+def _get_obs_scale(config):
     return [config.time_limit, 90., 100, 200, 200, 200]
 
 
@@ -191,13 +189,13 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self._config = Config(**config)
         self.num_envs = self._config.num_envs
         num_keys = len(Key) - 1 if self._config.auto_jump else len(Key)
-        
+
         if self._config.discrete_yaw_steps == -1:
             yaw_action_space = gym.spaces.Box(low=-self._config.action_range, high=self._config.action_range,
                                               shape=(1,), dtype=np.float32)
         else:
             yaw_action_space = gym.spaces.Discrete(2 * self._config.discrete_yaw_steps + 1)
-        self.action_space = gym.spaces.Tuple([*(gym.spaces.Discrete(2) for _ in range(num_keys)), yaw_action_space]) 
+        self.action_space = gym.spaces.Tuple([*(gym.spaces.Discrete(2) for _ in range(num_keys)), yaw_action_space])
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(6,), dtype=np.float32)
         self.reward_range = (-1000 * _TIME_DELTA, 1000 * _TIME_DELTA)
@@ -246,7 +244,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
         self._zero_start[index] = np.random.random() < self._config.zero_start_prob
         self._yaw[index] = (_INITIAL_YAW_ZERO if self._zero_start[index] else
-                                np.random.uniform(*self._config.initial_yaw_range))
+                            np.random.uniform(*self._config.initial_yaw_range))
         self._time_remaining[index] = (self._config.time_limit
                                        if self._zero_start[index]
                                        else np.random.uniform(self._config.time_limit))
@@ -272,7 +270,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         roll = np.zeros((self.num_envs,), dtype=np.float32)
         button2 = jump
         time_delta = np.full((self.num_envs,), _TIME_DELTA)
-        
+
         inputs = phys.Inputs(yaw=self._yaw, pitch=pitch, roll=roll, fmove=fmove, smove=smove,
                              button2=button2, time_delta=time_delta)
 
@@ -285,11 +283,11 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 
         self._time_remaining -= _TIME_DELTA
         done = self._time_remaining < 0
-        
+
         self._step_num += 1
 
         return self._get_obs(), reward, done, [{'zero_start': self._zero_start[i]} for i in range(self.num_envs)]
-        
+
     def get_unwrapped(self):
         return []
 
@@ -305,6 +303,7 @@ _SIMPLE_INITIAL_STATE = {'z_pos': np.float32(50),
                          'vel': np.array([0, 320, 0], dtype=np.float32),
                          'on_ground': np.bool(False),
                          'jump_released': np.bool(True)}
+
 
 class SimplePhysEnv(ray.rllib.env.VectorEnv):
     """An environment in which only yaw can be controlled, and the initial state doesn't change"""
@@ -326,7 +325,7 @@ class SimplePhysEnv(ray.rllib.env.VectorEnv):
         self._player_state = phys.PlayerState(
             **{k: np.stack([v
                             for _ in range(self.num_envs)])
-                            for k, v in _SIMPLE_INITIAL_STATE.items()})
+               for k, v in _SIMPLE_INITIAL_STATE.items()})
 
     @property
     def _obs_scale(self):
@@ -402,7 +401,7 @@ def _apply_action(client, action_to_move, action, time_remaining):
 
 async def eval_coro(config, port, trainer, demo_file):
     client = await pyquake.client.AsyncClient.connect("localhost", port)
-    config = Config({**config, 'num_envs': 1})
+    config = Config(**{**config, 'num_envs': 1})
     action_to_move = ActionToMove(config)
     action_to_move.vector_reset(np.array([_INITIAL_YAW_ZERO]))
 
@@ -417,7 +416,7 @@ async def eval_coro(config, port, trainer, demo_file):
         start_time = client.time
         time_remaining = None
         while time_remaining is None or time_remaining >= 0:
-            time_remaining = config['time_limit'] - (client.time - start_time)
+            time_remaining = config.time_limit - (client.time - start_time)
             obs = _make_observation(client, time_remaining, config)
             obs_list.append(obs)
             action = trainer.compute_action(obs)
@@ -433,4 +432,3 @@ async def eval_coro(config, port, trainer, demo_file):
         await client.disconnect()
 
     return obs_list, action_list
-
