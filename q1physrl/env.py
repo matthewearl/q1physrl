@@ -25,7 +25,7 @@ __all__ = (
 )
 
 
-_TIME_DELTA = np.float32(0.014)
+_DEFAULT_TIME_DELTA = np.float32(0.014)
 _MAX_YAW_SPEED = np.float32(2 * 360)  # degrees per second
 _INITIAL_STATE = {'z_pos': np.float32(32.843201),
                   'vel': np.array([0, 0, -12], dtype=np.float32),
@@ -57,7 +57,9 @@ class Config:
     initial_yaw_range: Tuple[float, float]
     max_initial_speed: float
     zero_start_prob: float
-    action_range: float = _MAX_YAW_SPEED * _TIME_DELTA
+    # Physics frame time should be 0.01388888 to match quake but 0.014 is here for backwards compatibility.
+    time_delta: float = 0.014   
+    action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
     time_limit: float = 5
     key_press_delay: float = 0.3
     discrete_yaw_steps: int = -1    # -1 = continuous
@@ -85,7 +87,7 @@ class ActionToMove:
         actions = self._fix_actions(actions)
         key_actions = actions[:, :self._num_action_keys].astype(np.int)
 
-        max_yaw_delta = _MAX_YAW_SPEED * _TIME_DELTA
+        max_yaw_delta = _MAX_YAW_SPEED * self._config.time_delta
         yaw_steps = self._config.discrete_yaw_steps
         if yaw_steps == -1:
             mouse_x_action = actions[:, self._num_action_keys] * max_yaw_delta / self._config.action_range
@@ -198,7 +200,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.action_space = gym.spaces.Tuple([*(gym.spaces.Discrete(2) for _ in range(num_keys)), yaw_action_space])
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(6,), dtype=np.float32)
-        self.reward_range = (-1000 * _TIME_DELTA, 1000 * _TIME_DELTA)
+        self.reward_range = (-1000 * self._config.time_delta, 1000 * self._config.time_delta)
         self.metadata = {}
 
         self._obs_scale = _get_obs_scale(self._config)
@@ -269,7 +271,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
         button2 = jump
-        time_delta = np.full((self.num_envs,), _TIME_DELTA)
+        time_delta = np.full((self.num_envs,), self._config.time_delta)
 
         inputs = phys.Inputs(yaw=self._yaw, pitch=pitch, roll=roll, fmove=fmove, smove=smove,
                              button2=button2, time_delta=time_delta)
@@ -277,11 +279,11 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.player_state = phys.apply(inputs, self.player_state)
 
         if self._config.speed_reward:
-            reward = _TIME_DELTA * np.linalg.norm(self.player_state.vel[:, :2], axis=1)
+            reward = self._config.time_delta * np.linalg.norm(self.player_state.vel[:, :2], axis=1)
         else:
-            reward = _TIME_DELTA * self.player_state.vel[:, 1]
+            reward = self._config.time_delta * self.player_state.vel[:, 1]
 
-        self._time_remaining -= _TIME_DELTA
+        self._time_remaining -= self._config.time_delta
         done = self._time_remaining < 0
 
         self._step_num += 1
@@ -296,7 +298,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
 class SimpleConfig:
     num_envs: int
     time_limit: float = 5
-    action_range: float = _MAX_YAW_SPEED * _TIME_DELTA
+    action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
 
 
 _SIMPLE_INITIAL_STATE = {'z_pos': np.float32(50),
@@ -350,7 +352,7 @@ class SimplePhysEnv(ray.rllib.env.VectorEnv):
         return self._get_obs_at(index)
 
     def vector_step(self, actions):
-        max_yaw_delta = _MAX_YAW_SPEED * _TIME_DELTA
+        max_yaw_delta = _MAX_YAW_SPEED * self._config.time_delta
 
         mouse_x_action = np.concatenate(actions) * max_yaw_delta / self._config.action_range
         self._yaw = self._yaw + mouse_x_action
@@ -360,16 +362,16 @@ class SimplePhysEnv(ray.rllib.env.VectorEnv):
         fmove = np.full((self.num_envs,), 800., dtype=np.float32)
         smove = np.zeros((self.num_envs,), dtype=np.float32)
         button2 = np.full((self.num_envs,), False)
-        time_delta = np.full((self.num_envs,), _TIME_DELTA)
+        time_delta = np.full((self.num_envs,), self._config.time_delta)
 
         inputs = phys.Inputs(yaw=self._yaw, pitch=pitch, roll=roll, fmove=fmove, smove=smove,
                              button2=button2, time_delta=time_delta)
 
         next_player_state = phys.apply(inputs, self._player_state)
 
-        reward = _TIME_DELTA * np.linalg.norm(next_player_state.vel[:, :2], axis=1)
+        reward = self._config.time_delta * np.linalg.norm(next_player_state.vel[:, :2], axis=1)
 
-        self._time_remaining -= _TIME_DELTA
+        self._time_remaining -= self._config.time_delta
         done = self._time_remaining < 0
 
         if np.any(np.isnan(reward)):

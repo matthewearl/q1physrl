@@ -48,6 +48,7 @@ def parse_demo(fname):
 
 @dataclasses.dataclass
 class EvalSimResult:
+    time_delta: float
     player_state: phys.PlayerState
     action: np.ndarray
     obs: np.ndarray
@@ -126,7 +127,7 @@ class EvalSimResult:
         plt.show()
 
 
-def eval_sim(trainer, env_config):
+def eval_sim(trainer, env_config: env.Config):
     e = env.PhysEnv(dataclasses.asdict(env_config))
     o, = e.vector_reset()
     action_to_move = env.ActionToMove(env_config)
@@ -160,6 +161,7 @@ def eval_sim(trainer, env_config):
         reward.append(r)
         
     return EvalSimResult(
+        time_delta=env_config.time_delta,
         player_state=phys.PlayerState.concatenate(player_states),
         action=np.stack(actions),
         obs=np.stack(obs),

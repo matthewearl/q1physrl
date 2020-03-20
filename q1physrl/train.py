@@ -38,6 +38,7 @@ _ENV_CONFIG = q1physrl.env.Config(
     speed_reward=False,
     fmove_max=800,
     smove_max=1060,
+    time_delta=1. / 72,
 )
 
 
