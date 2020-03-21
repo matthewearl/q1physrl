@@ -37,7 +37,7 @@ _ENV_CONFIG = q1physrl.env.Config(
     discrete_yaw_steps=-1,
     speed_reward=False,
     fmove_max=800,
-    smove_max=1060,
+    smove_max=1200,
     time_delta=1. / 72,
 )
 

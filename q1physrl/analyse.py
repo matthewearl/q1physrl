@@ -4,7 +4,6 @@ from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.colors
 import numpy as np
 import pyquake
 import ray
@@ -99,30 +98,27 @@ class EvalSimResult:
         delta_speeds = self.hypothetical_delta_speeds
         wish_angle = self.wish_angle
 
-        vmin = np.min(delta_speeds)
-        vmax = np.max(delta_speeds)
-        norm = matplotlib.colors.DivergingNorm(vmin=vmin, vcenter=0., vmax=vmax)
-
         plt.figure(figsize=(20, 16))
         plt.ylim(180, -180)
         plt.ylabel('wish_angle - move_angle')
         plt.xlabel('frame')
 
-        c = delta_speeds
-        plt.imshow(c, cmap='seismic', norm=norm,
-                   extent=(0, delta_speeds.shape[1], 180, -180)
-                  )
+        # Color by rank, and only show from the `100 * alpha` percentile up.
+        c = np.argsort(np.argsort(delta_speeds, axis=0), axis=0)
+        c = c / (delta_speeds.shape[0] - 1)
+        alpha = 0.95
+        c = np.maximum((c - alpha) / (1 - alpha), 0)
+
+        # Sometimes some zero values are in the top 5th percentile, just show
+        # these as zero.
+        c = np.where(np.abs(delta_speeds) < 1e-3, 0, c)
+
+        plt.imshow(c, cmap='viridis',
+                   extent=(0, delta_speeds.shape[1], 180, -180))
         wrapped_angle = ((wish_angle - self.move_angle + 180) % 360) - 180
-        plt.plot(wrapped_angle, color='#00ff00')
-        plt.axhline(0)
-        plt.axhline(90)
-        plt.axhline(-45, alpha=0.5)
-        plt.axhline(45, alpha=0.5)
-        plt.axhline(-90)
+        plt.plot(wrapped_angle, color='#ff00ff', linestyle='--')
 
-        plt.colorbar()
-
-        plt.plot(self.fmove / 20 + 100, color='#ffff00')
+        plt.colorbar(orientation='horizontal')
 
         plt.show()
 
