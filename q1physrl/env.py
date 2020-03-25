@@ -67,6 +67,7 @@ class Config:
     fmove_max: float = 800.  # units per second
     smove_max: float = 700.  # units per second
     hover: bool = False     # No gravity, fixed initial speed
+    smooth_keys: bool = False  # Register half a key press on transitions
 
 
 class ActionToMove:
@@ -94,6 +95,7 @@ class ActionToMove:
         else:
             mouse_x_action = (actions[:, self._num_action_keys] - yaw_steps) * max_yaw_delta / yaw_steps
 
+        # Rate limit key presses
         elapsed = (self._config.time_limit - time_remaining[:, None] >=
                    self._last_key_press_time + self._config.key_press_delay)
         keys = key_actions & (elapsed | self._last_keys)
@@ -102,17 +104,23 @@ class ActionToMove:
             (self._config.time_limit - time_remaining[:, None]),
             self._last_key_press_time
         )
+
+        # Register half a press if transitioning, see cl_input.c:CL_KeyState()
+        if self._config.smooth_keys:
+            smoothed_keys = (keys + self._last_keys) * 0.5
+        else:
+            smoothed_keys = keys
+
         self._last_keys = keys
 
-        keys_int = keys.astype(np.int)
         self._yaw = self._yaw + mouse_x_action
-        strafe_keys = keys_int[:, Key.STRAFE_RIGHT] - keys_int[:, Key.STRAFE_LEFT]
+        strafe_keys = smoothed_keys[:, Key.STRAFE_RIGHT] - smoothed_keys[:, Key.STRAFE_LEFT]
         smove = np.float32(self._config.smove_max) * strafe_keys
-        fmove = np.float32(self._config.fmove_max) * keys_int[:, Key.FORWARD]
+        fmove = np.float32(self._config.fmove_max) * smoothed_keys[:, Key.FORWARD]
         if self._config.auto_jump:
             jump = z_vel <= 16
         else:
-            jump = keys_int[:, Key.JUMP]
+            jump = keys[:, Key.JUMP].astype(np.bool)
 
         return self._yaw, smove.astype(np.int), fmove.astype(np.int), jump.astype(np.bool)
 
