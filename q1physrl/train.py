@@ -32,13 +32,14 @@ _ENV_CONFIG = q1physrl.env.Config(
     key_press_delay=0.3,
     initial_yaw_range=(0, 360),
     max_initial_speed=700.,
-    zero_start_prob=1e-2,
+    zero_start_prob=1.0,
     action_range=10,
     discrete_yaw_steps=-1,
     speed_reward=False,
     fmove_max=800,
-    smove_max=1200,
+    smove_max=1060,
     time_delta=1. / 72,
+    smooth_keys=True,
 )
 
 

@@ -1,3 +1,4 @@
+import cv2
 import dataclasses
 import sys
 from pathlib import Path
@@ -121,6 +122,52 @@ class EvalSimResult:
         plt.colorbar(orientation='horizontal')
 
         plt.show()
+
+
+def _draw_arrow(im, pos: np.ndarray, vec: np.ndarray, width: float, head_size: float, color: np.ndarray,
+                xform: np.ndarray):
+
+    len_ = np.linalg.norm(vec)
+    if len_ < 1e-5:
+        return
+    vec = vec / len_
+
+    xform = xform @ np.array([[vec[1],  vec[0], pos[0]],
+                              [-vec[0], vec[1], pos[1]],
+                              [0,       0,      1]])
+
+    points = np.array([[0.5 * width,       0,                      1],
+                       [0.5 * width,       len_ * (1 - head_size), 1],
+                       [len_ * head_size,  len_ * (1 - head_size), 1],
+                       [0,                 len_,                   1],
+                       [-len_ * head_size, len_ * (1 - head_size), 1],
+                       [-0.5 * width,      len_ * (1 - head_size), 1],
+                       [-0.5 * width,      0, 1]])
+
+    points = (points @ xform.T)[:, :2]
+    points = np.array([[int(x) for x in p] for p in points])
+
+    rgb = np.ascontiguousarray(im[:, :, :3]).copy()
+    a = np.ascontiguousarray(im[:, :, 3]).copy()
+
+    cv2.fillPoly(rgb, points[None], color[:3], lineType=8)
+    cv2.polylines(rgb, points[None], True, color[:3], thickness=2, lineType=8)
+    cv2.fillPoly(a, points[None], color[3], lineType=cv2.LINE_AA)
+
+    im[:, :, :3] = rgb
+    im[:, :, 3] = a
+
+
+def _draw_arrow_key(im, pos: np.ndarray, vec: np.ndarray, pressed: bool, xform: np.array):
+    color = [0, 255, 255, 255] if pressed else [200, 200, 200, 255]
+    _draw_arrow(im, pos, vec, 8.0, 0.4, color, xform)
+
+
+def draw_inputs(im, keys, yaw, xform):
+    _draw_arrow_key(im, np.array([40, 20]), np.array([0, -20]), keys[env.Key.FORWARD], xform)
+    _draw_arrow_key(im, np.array([20, 40]), np.array([-20, 0]), keys[env.Key.STRAFE_LEFT], xform)
+    _draw_arrow_key(im, np.array([40, 30]), np.array([0, 20]), False, xform)
+    _draw_arrow_key(im, np.array([60, 40]), np.array([20, 0]), keys[env.Key.STRAFE_RIGHT], xform)
 
 
 def eval_sim(trainer, env_config: env.Config):
