@@ -40,6 +40,8 @@ _ENV_CONFIG = q1physrl.env.Config(
     smove_max=1060,
     time_delta=1. / 72,
     smooth_keys=True,
+    allow_jump=False,
+    allow_yaw=True,
 )
 
 

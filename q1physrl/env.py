@@ -62,12 +62,14 @@ class Config:
     action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
     time_limit: float = 5
     key_press_delay: float = 0.3
-    discrete_yaw_steps: int = -1    # -1 = continuous
+    discrete_yaw_steps: int = -1    # -1 = continuous.  Does nothing if allow_yaw is false.
     speed_reward: bool = False  # reward speed rather than velocity in y dir.
     fmove_max: float = 800.  # units per second
     smove_max: float = 700.  # units per second
     hover: bool = False     # No gravity, fixed initial speed
     smooth_keys: bool = False  # Register half a key press on transitions
+    allow_jump: bool = True  # If auto-jump is False, then permit jumping with an action
+    allow_yaw: bool = True  # Have yaw dimension in action space.
 
 
 class ActionToMove:
@@ -78,7 +80,20 @@ class ActionToMove:
 
     def __init__(self, config: Config):
         self._config = config
-        self._num_action_keys = len(Key) - 1 if self._config.auto_jump else len(Key)
+        has_jump_action = not self._config.auto_jump and self._config.allow_jump
+        self._num_keys = len(Key) - 1 if has_jump_action else len(Key)
+
+    @property
+    def action_space(self):
+        if not self._config.allow_yaw:
+            yaw_action_space = []
+        elif self._config.discrete_yaw_steps == -1:
+            yaw_action_space = [gym.spaces.Box(low=-self._config.action_range, high=self._config.action_range,
+                                               shape=(1,), dtype=np.float32)]
+        else:
+            yaw_action_space = [gym.spaces.Discrete(2 * self._config.discrete_yaw_steps + 1)]
+
+        return gym.spaces.Tuple([*(gym.spaces.Discrete(2) for _ in range(self._num_keys)), *yaw_action_space])
 
     def _fix_actions(self, actions):
         # trainer.compute_actions() and trainer.train() return data in slightly different formats.
@@ -86,14 +101,17 @@ class ActionToMove:
 
     def map(self, actions, z_vel, time_remaining):
         actions = self._fix_actions(actions)
-        key_actions = actions[:, :self._num_action_keys].astype(np.int)
+        key_actions = actions[:, :self._num_keys].astype(np.int)
 
         max_yaw_delta = _MAX_YAW_SPEED * self._config.time_delta
         yaw_steps = self._config.discrete_yaw_steps
-        if yaw_steps == -1:
-            mouse_x_action = actions[:, self._num_action_keys] * max_yaw_delta / self._config.action_range
+
+        if not self._config.allow_yaw:
+            mouse_x_action = 0.
+        elif yaw_steps == -1:
+            mouse_x_action = actions[:, self._num_keys] * max_yaw_delta / self._config.action_range
         else:
-            mouse_x_action = (actions[:, self._num_action_keys] - yaw_steps) * max_yaw_delta / yaw_steps
+            mouse_x_action = (actions[:, self._num_keys] - yaw_steps) * max_yaw_delta / yaw_steps
 
         # Rate limit key presses
         elapsed = (self._config.time_limit - time_remaining[:, None] >=
@@ -114,20 +132,23 @@ class ActionToMove:
         self._last_keys = keys
 
         self._yaw = self._yaw + mouse_x_action
+        #self._yaw = np.full((keys.shape[0],), 100.)
         strafe_keys = smoothed_keys[:, Key.STRAFE_RIGHT] - smoothed_keys[:, Key.STRAFE_LEFT]
         smove = np.float32(self._config.smove_max) * strafe_keys
         fmove = np.float32(self._config.fmove_max) * smoothed_keys[:, Key.FORWARD]
         if self._config.auto_jump:
             jump = z_vel <= 16
-        else:
+        elif self._config.allow_jump:
             jump = keys[:, Key.JUMP].astype(np.bool)
+        else:
+            jump = np.full((keys.shape[0]), False)
 
         return self._yaw, smove.astype(np.int), fmove.astype(np.int), jump.astype(np.bool)
 
     def vector_reset(self, yaw):
-        self._last_key_press_time = np.full((self._config.num_envs, self._num_action_keys),
+        self._last_key_press_time = np.full((self._config.num_envs, self._num_keys),
                                             -self._config.key_press_delay)
-        self._last_keys = np.full((self._config.num_envs, self._num_action_keys), False)
+        self._last_keys = np.full((self._config.num_envs, self._num_keys), False)
 
         self._yaw = np.array(yaw)
 
@@ -198,14 +219,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
     def __init__(self, config):
         self._config = Config(**config)
         self.num_envs = self._config.num_envs
-        num_keys = len(Key) - 1 if self._config.auto_jump else len(Key)
 
-        if self._config.discrete_yaw_steps == -1:
-            yaw_action_space = gym.spaces.Box(low=-self._config.action_range, high=self._config.action_range,
-                                              shape=(1,), dtype=np.float32)
-        else:
-            yaw_action_space = gym.spaces.Discrete(2 * self._config.discrete_yaw_steps + 1)
-        self.action_space = gym.spaces.Tuple([*(gym.spaces.Discrete(2) for _ in range(num_keys)), yaw_action_space])
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
                                                 shape=(6,), dtype=np.float32)
         self.reward_range = (-1000 * self._config.time_delta, 1000 * self._config.time_delta)
@@ -214,6 +228,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self._obs_scale = _get_obs_scale(self._config)
 
         self._action_to_move = ActionToMove(self._config)
+        self.action_space = self._action_to_move.action_space
         self._step_num = 0
         self.vector_reset()
 
