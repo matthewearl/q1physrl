@@ -27,12 +27,12 @@ except ImportError:
 _ENV_CLASS = q1physrl.env.PhysEnv
 _ENV_CONFIG = q1physrl.env.Config(
     num_envs=100,
-    auto_jump=False,
+    auto_jump=True,
     time_limit=10,
     key_press_delay=0.3,
     initial_yaw_range=(0, 360),
     max_initial_speed=700.,
-    zero_start_prob=1.0,
+    zero_start_prob=1e-2,
     action_range=10,
     discrete_yaw_steps=-1,
     speed_reward=False,
@@ -40,7 +40,7 @@ _ENV_CONFIG = q1physrl.env.Config(
     smove_max=1060,
     time_delta=1. / 72,
     smooth_keys=True,
-    allow_jump=False,
+    allow_jump=True,
     allow_yaw=True,
 )
 
