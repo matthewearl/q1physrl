@@ -79,7 +79,7 @@ class ActionToMove:
     def __init__(self, config: Config):
         self._config = config
         has_jump_action = not self._config.auto_jump and self._config.allow_jump
-        self._num_keys = len(Key) - 1 if has_jump_action else len(Key)
+        self._num_keys = len(Key) if has_jump_action else len(Key) - 1
 
     @property
     def action_space(self):
