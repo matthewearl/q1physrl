@@ -13,9 +13,7 @@ setup(name='q1physrl',
           ]
       },
       description='Reinforcement learning environment for Quake 1 player physics',
-      install_requires=['numpy',
-                        'pandas',
-                        'matplotlib'],
+      install_requires=['ray[rllib]', 'numpy', 'pandas', 'requests'],
       author='Matt Earl',
       packages=['q1physrl'])
 

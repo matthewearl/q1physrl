@@ -1,19 +1,15 @@
 import copy
 import datetime
 import dataclasses
-import datetime
 import sys
 import time
 from pathlib import Path
 from pprint import pprint
 
-import matplotlib.pyplot as plt
-
 import numpy as np
 import ray
 import ray.rllib
 
-import q1physrl.analyse
 import q1physrl.env
 
 try:
@@ -22,12 +18,12 @@ try:
     from wandb.tensorflow import WandbHook
 except ImportError:
     wandb = None
-#wandb = None
+
 
 _ENV_CLASS = q1physrl.env.PhysEnv
 _ENV_CONFIG = q1physrl.env.Config(
     num_envs=100,
-    auto_jump=True,
+    auto_jump=False,
     time_limit=10,
     key_press_delay=0.3,
     initial_yaw_range=(0, 360),
@@ -172,6 +168,9 @@ def train():
 
         # Periodically record some plots
         if wandb is not None and i % 1 == 0:
+            import matplotlib.pyplot as plt
+            import q1physrl.analyse
+
             start = time.perf_counter()
             eval_config = dataclasses.replace(_ENV_CONFIG, num_envs=1, zero_start_prob=1.0)
             r = q1physrl.analyse.eval_sim(trainer, eval_config)

@@ -6,8 +6,6 @@ import gym.spaces
 import numpy as np
 import ray.rllib
 
-import pyquake.client
-
 from . import phys
 
 
@@ -425,6 +423,8 @@ def _apply_action(client, action_to_move, action, time_remaining):
 
 
 async def eval_coro(config, port, trainer, demo_file):
+    import pyquake.client
+
     client = await pyquake.client.AsyncClient.connect("localhost", port)
     config = Config(**{**config, 'num_envs': 1})
     action_to_move = ActionToMove(config)
