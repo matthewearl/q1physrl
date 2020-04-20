@@ -11,6 +11,7 @@ import ray
 import ray.rllib
 
 import q1physrl.env
+import q1physrl.action_dist
 
 try:
     import tensorboardX    # for some reason this is required with ray==0.8.2 for wandb to work
@@ -70,7 +71,8 @@ _PPO_CONFIG = {
     "num_workers": 4,
     "entropy_coeff": 0.01,
     "vf_clip_param": 100,
-    "train_batch_size": 50000
+    "train_batch_size": 50000,
+    "model": {"custom_action_dist": "q1_phys_action_dist"},
 }
 
 
