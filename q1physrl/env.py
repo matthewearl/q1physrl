@@ -14,6 +14,8 @@ __all__ = (
     'Config',
     'eval',
     'eval_coro',
+    'get_obs_scale',
+    'INITIAL_YAW_ZERO',
     'Key',
     'Obs',
     'PhysEnv',
@@ -29,7 +31,7 @@ _INITIAL_STATE = {'z_pos': np.float32(32.843201),
                   'vel': np.array([0, 0, -12], dtype=np.float32),
                   'on_ground': np.bool(False),
                   'jump_released': np.bool(True)}
-_INITIAL_YAW_ZERO = np.float32(90)
+INITIAL_YAW_ZERO = np.float32(90)
 
 
 class Key(enum.IntEnum):
@@ -156,7 +158,7 @@ class ActionToMove:
         self._yaw[index] = yaw
 
 
-def _get_obs_scale(config):
+def get_obs_scale(config):
     return [config.time_limit, 90., 100, 200, 200, 200]
 
 
@@ -223,7 +225,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self.reward_range = (-1000 * self._config.time_delta, 1000 * self._config.time_delta)
         self.metadata = {}
 
-        self._obs_scale = _get_obs_scale(self._config)
+        self._obs_scale = get_obs_scale(self._config)
 
         self._action_to_move = ActionToMove(self._config)
         self.action_space = self._action_to_move.action_space
@@ -237,7 +239,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         self._zero_start = np.random.random(size=(self.num_envs,)) < self._config.zero_start_prob
 
         self._yaw = np.where(self._zero_start,
-                             _INITIAL_YAW_ZERO,
+                             INITIAL_YAW_ZERO,
                              np.random.uniform(*self._config.initial_yaw_range, size=(self.num_envs,)))
         self._time_remaining = np.where(self._zero_start,
                                         self._config.time_limit,
@@ -266,7 +268,7 @@ class PhysEnv(ray.rllib.env.VectorEnv):
             getattr(self.player_state, k)[index] = v
 
         self._zero_start[index] = np.random.random() < self._config.zero_start_prob
-        self._yaw[index] = (_INITIAL_YAW_ZERO if self._zero_start[index] else
+        self._yaw[index] = (INITIAL_YAW_ZERO if self._zero_start[index] else
                             np.random.uniform(*self._config.initial_yaw_range))
         self._time_remaining[index] = (self._config.time_limit
                                        if self._zero_start[index]
@@ -362,13 +364,13 @@ class SimplePhysEnv(ray.rllib.env.VectorEnv):
 
     def vector_reset(self):
         self._time_remaining = np.full((self.num_envs,), self._config.time_limit, dtype=np.float32)
-        self._yaw = np.full((self.num_envs,), _INITIAL_YAW_ZERO, dtype=np.float32)
+        self._yaw = np.full((self.num_envs,), INITIAL_YAW_ZERO, dtype=np.float32)
 
         return self._get_obs()
 
     def reset_at(self, index):
         self._time_remaining[index] = self._config.time_limit
-        self._yaw[index] = _INITIAL_YAW_ZERO
+        self._yaw[index] = INITIAL_YAW_ZERO
 
         return self._get_obs_at(index)
 
@@ -403,57 +405,3 @@ class SimplePhysEnv(ray.rllib.env.VectorEnv):
         return []
 
 
-def _make_observation(client, time_remaining, config):
-    yaw = 180 * client.angles[1] / np.pi
-    vel = np.array(client.velocity)
-    z_pos = client.player_origin[2]
-    obs_scale = _get_obs_scale(config)
-    return np.concatenate([[time_remaining], [yaw], [z_pos], vel]) / obs_scale
-
-
-def _apply_action(client, action_to_move, action, time_remaining):
-    (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([[a[0] for a in action]],
-                                                             np.float32(client.velocity[2])[None],
-                                                             np.float32(time_remaining)[None])
-    yaw *= np.pi / 180
-
-    buttons = np.where(jump, 2, 0)
-    client.move(pitch=0, yaw=yaw, roll=0, forward=fmove, side=smove,
-                up=0, buttons=buttons, impulse=0)
-
-
-async def eval_coro(config, port, trainer, demo_file):
-    import pyquake.client
-
-    client = await pyquake.client.AsyncClient.connect("localhost", port)
-    config = Config(**{**config, 'num_envs': 1})
-    action_to_move = ActionToMove(config)
-    action_to_move.vector_reset(np.array([_INITIAL_YAW_ZERO]))
-
-    obs_list = []
-    action_list = []
-
-    try:
-        demo = client.record_demo()
-        await client.wait_until_spawn()
-        client.move(*client.angles, 0, 0, 0, 0, 0)
-        await client.wait_for_movement(client.view_entity)
-        start_time = client.time
-        time_remaining = None
-        while time_remaining is None or time_remaining >= 0:
-            time_remaining = config.time_limit - (client.time - start_time)
-            obs = _make_observation(client, time_remaining, config)
-            obs_list.append(obs)
-            action = trainer.compute_action(obs)
-            action_list.append(action)
-
-            _apply_action(client, action_to_move, action, time_remaining)
-            await client.wait_for_movement(client.view_entity)
-
-        demo.stop_recording()
-        demo.dump(demo_file)
-
-    finally:
-        await client.disconnect()
-
-    return obs_list, action_list
