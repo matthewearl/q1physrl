@@ -1,23 +1,9 @@
-FROM python:3.7.7-buster
-
 ARG DEBIAN_FRONTEND=noninteractive
+
+FROM python:3.7.7-buster
 
 WORKDIR ws
 RUN apt update -y
-
-# Install ray with gaussian squashed gaussian support
-RUN echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" > \
-        /etc/apt/sources.list.d/bazel.list && \
-    curl https://bazel.build/bazel-release.pub.gpg | apt-key add - && \
-    apt update -y && \
-    apt install -y cmake bazel=1.1.0 && \
-    git clone 'https://github.com/matthewearl/ray.git' ray-gsg -b me/gsg && \
-    cd ray-gsg/python && \
-    python setup.py bdist_wheel && \
-    pip install dist/*.whl && \
-    cd ../.. && \
-    rm -rf ray-gsg && \
-    rm -r /root/.cache
 
 # Install quake shareware
 RUN wget https://ftp.gwdg.de/pub/misc/ftp.idsoftware.com/idstuff/quake/quake106.zip && \
@@ -38,7 +24,12 @@ RUN apt install -y libsdl2-dev && \
     make
 
 # Install q1physrl (and dependencies)
-COPY . q1physrl
-RUN pip install -e q1physrl
+COPY archive.tar.gz .
+RUN tar zxvf archive.tar.gz && \
+    pip install -r q1physrl/requirements_train.txt && \
+    pip install -e q1physrl && rm -r /root/.cache
 
-# TODO: Install and expose tensorboard?
+# Expose tensorboard port.
+EXPOSE 6006
+
+# Run this to start tensorboard:   tensorboard --logdir q1physrl --bind_all
