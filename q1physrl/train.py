@@ -9,6 +9,7 @@ from pprint import pprint
 import numpy as np
 import ray
 import ray.rllib
+import yaml
 
 import q1physrl.env
 import q1physrl.action_dist
@@ -22,68 +23,11 @@ except ImportError:
 
 
 _ENV_CLASS = q1physrl.env.PhysEnv
-_ENV_CONFIG = q1physrl.env.Config(
-    num_envs=100,
-    auto_jump=False,
-    time_limit=10,
-    key_press_delay=0.3,
-    initial_yaw_range=(0, 360),
-    max_initial_speed=700.,
-    zero_start_prob=1e-2,
-    action_range=10,
-    discrete_yaw_steps=-1,
-    speed_reward=False,
-    fmove_max=800,
-    smove_max=1060,
-    time_delta=1. / 72,
-    smooth_keys=True,
-    allow_jump=True,
-    allow_yaw=True,
-)
-
-
-#_ENV_CLASS = q1physrl.env.SimplePhysEnv
-#_ENV_CONFIG = q1physrl.env.SimpleConfig(
-#    num_envs=100,
-#    time_limit=10.,
-#    action_range=1.0,
-#)
 
 
 _TRAINER_CLASSES = {
     "PPOTrainer": ray.rllib.agents.ppo.PPOTrainer,
-    "SACTrainer": ray.rllib.agents.sac.SACTrainer
 }
-
-
-_SAC_CONFIG = {
-    "gamma": 0.99,
-    "num_workers": 2,
-    "target_entropy": 2,
-}
-
-
-_PPO_CONFIG = {
-    "lr": 0.000005,
-    "gamma": 0.99,
-    "lambda": 0.95,
-    "kl_target": 0.0036,
-    "num_workers": 4,
-    "entropy_coeff": 0.01,
-    "vf_clip_param": 100,
-    "train_batch_size": 50000,
-    "model": {"custom_action_dist": "q1_phys_action_dist"},
-}
-
-
-def make_run_config(env_config):
-    return {
-        "trainer_class": "PPOTrainer",
-        "trainer_config": {
-            "env_config": dataclasses.asdict(env_config),
-            **_PPO_CONFIG,
-        }
-    }
 
 
 def _on_episode_end(info):
@@ -92,11 +36,10 @@ def _on_episode_end(info):
         episode.custom_metrics['zero_start_total_reward'] = episode.total_reward
 
 
-def make_trainer(run_config):
-    cls = _TRAINER_CLASSES[run_config['trainer_class']]
-    trainer_config = copy.deepcopy(run_config['trainer_config'])
+def make_trainer(params):
+    trainer_config = copy.deepcopy(params['trainer_config'])
     trainer_config['callbacks'] = {'on_episode_end': _on_episode_end}
-
+    cls = _TRAINER_CLASSES[params['trainer_class']]
     return cls(env=_ENV_CLASS, config=trainer_config)
 
 
@@ -128,24 +71,25 @@ class _Stat:
 
 
 def train():
-    run_config = make_run_config(_ENV_CONFIG)
+    # Parse the config
+    with open(sys.argv[1]) as f:
+        params = yaml.safe_load(f)
 
+    # Initialize wandb, if it's installed.
     run_id = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     if wandb is not None:
         run = wandb.init(project="q1physrl",
-                         config=run_config,
+                         config=params,
                          sync_tensorboard=True)
         run_id = f"{run_id}_{run.id}"
 
+    # Initialize ray, and the trainer
     ray.init()
-
-    trainer = make_trainer(run_config)
-
-    if len(sys.argv) >= 2:
-        trainer.restore(sys.argv[1])
+    trainer = make_trainer(params)
+    if params['checkpoint_fname'] is not None:
+        trainer.restore(params['checkpoint_fname'])
 
     best_stats = {}
-
     i = 0
     while True:
         stats = trainer.train()
@@ -174,7 +118,8 @@ def train():
             import q1physrl.analyse
 
             start = time.perf_counter()
-            eval_config = dataclasses.replace(_ENV_CONFIG, num_envs=1, zero_start_prob=1.0)
+            env_config = q1physrl.env.Config(**params['trainer_config']['env_config'])
+            eval_config = dataclasses.replace(env_config, num_envs=1, zero_start_prob=1.0)
             r = q1physrl.analyse.eval_sim(trainer, eval_config)
             r.wish_angle_yaw_plot()
             wandb.log({'chart': plt})
