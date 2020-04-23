@@ -11,7 +11,7 @@ import ray
 import ray.rllib
 import yaml
 
-import q1physrl.env
+import q1physrl_env.env
 import q1physrl.action_dist
 
 try:
@@ -22,7 +22,7 @@ except ImportError:
     wandb = None
 
 
-_ENV_CLASS = q1physrl.env.PhysEnv
+_ENV_CLASS = q1physrl_env.env.VectorPhysEnv
 
 
 _TRAINER_CLASSES = {
@@ -117,7 +117,7 @@ def train():
             import q1physrl.analyse
 
             start = time.perf_counter()
-            env_config = q1physrl.env.Config(**params['trainer_config']['env_config'])
+            env_config = q1physrl_env.env.Config(**params['trainer_config']['env_config'])
             eval_config = dataclasses.replace(env_config, num_envs=1, zero_start_prob=1.0)
             r = q1physrl.analyse.eval_sim(trainer, eval_config)
             r.wish_angle_yaw_plot()

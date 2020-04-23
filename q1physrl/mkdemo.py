@@ -8,8 +8,9 @@ import sys
 
 import numpy as np
 import ray
+from q1physrl_env import env
 
-from . import env, train
+from . import train
 
 
 logger = logging.getLogger(__name__)

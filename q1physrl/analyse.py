@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyquake
 import ray
+from q1physrl_env import env
 
-from . import env
 from . import phys
 from . import train
 

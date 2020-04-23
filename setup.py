@@ -13,7 +13,7 @@ setup(name='q1physrl',
                 'q1physrl_make_speed_anim = q1physrl.vidtools:make_speed_anim',
           ]
       },
-      description='Reinforcement learning environment for Quake 1 player physics',
+      description='A script for training the q1physrl_env environment',
       install_requires=['ray[rllib]', 'numpy', 'pandas', 'requests'],
       author='Matt Earl',
       packages=['q1physrl'])

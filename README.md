@@ -1,79 +1,64 @@
-## Just install the env
+## Installing the gym env
 
-TODO
+If you just want to play with the gym environment then you need only clone this repo and install the env package:
 
+```
+git clone '<this repo>'
+pip install -e q1physrl_env
+```
+
+The environment ID is `Q1PhysEnv-v0`.  The environment accepts a single argument `config` which is an instance of
+`q1phys_env.env.Config`.  See the docstring for this class for more details.
 
 ## Training
 
-Set up a clean virtualenv using Python 3.7 or greater (tested with Python 3.7.2).
+Follow these instructions if you want to train the model used in the video:
 
-Clone the Gaussian Squashed Gaussian branch of ray and install it:
-```
-git clone '<me/gsg refpoint>' ray-gsg
-pip install -v -e ray-gsg/python
-```
+1. Set up a clean virtualenv using Python 3.7 or greater (tested with Python 3.7.2).
 
 Install this repo and its requirements:
 ```
 git clone '<this repo>'
-pip install -r q1physrl/requirements-train.txt
+pip install -r q1physrl/requirements_train.txt
+pip install -e q1physrl_env
 pip install -e q1physrl
 ```
 
-To log to weights and biases (including logging to matplotlib) run:
+2. To log to Weights and Biases (including logging angle plots with matplotlib) run:
 
 ```
 pip install matplotlib
 pip install wandb
 wandb init
 ```
+Alternatively, you can just view results on tensorboard with `tensorboard -logdir ~/ray_results`.
 
-Finally, run:
-
-```
-q1physrl_train
-```
-
-and wait for convergence.
-
-
-## Evaluating with Quake
-
-TODO:  Dockerize all this stuff?
-
-Follow these instructions to take a checkpoint file produced by the above process, run it through a (modified) Quake
-server, and save the demo file.  For this step you'll need some Quake pak files, although, shareware is probably fine?
-
-Install pyquake
-```
-git clone `<pyquake>`
-pip install -e pyquake
+3. Finally, run:
 
 ```
-
-Install modified version of Quakespasm:
-
-```
-git clone '<quakespasm me/hacks>' quakespasm-hacks
-mkdir -p ~/.quakespasm/id1
-cp <quake pak files> ~/.quakespasm/id1
-cp 100m.bsp ~/.quakespasm/id1       # Use a search engine to find this map
-cd quakespasm-hacks/quakespasm/Quake
-make
+q1physrl_train q1physrl/params.yml
 ```
 
-Launch a quake server:
-```
-./quakespasm -protocol 15 -dedicated 1 -basedir ~/.quakespasm/ +host_framerate 0.01388888888888 +sys_ticrate
-0.0 +sync_movements 1 +nomonsters 1 +map 100m
-```
+and wait for convergence.  Modify the file referenced in the argument to change run config.  My current PB (the one in
+the video) gets about 5700 on the `zero_start_total_reward_mean` metric, after 150 million steps.
 
-In another window, run the following using a checkpoint file produced from training:
-```
-q1physrl_evaluate  '<checkpoint file>'  '<demo file name>' 
-```
-TODO: Write this script
+RLLib will write checkpoint files and run parameters into `~/ray_results`, which will be needed to produce a demo file
+(see *Producing a Quake demo file* below).
 
-Kill the quake server in the first window.
+## Producing a Quake demo file
 
+Demo files (extension `.dem`) are how games are recorded and shared in Quake.  The easiest way to do this is with the
+docker image, since there are a few bits and pieces to install.
 
+[TODO: Add docker invocation here]
+
+## Pretrained weights and parameters
+
+[TODO: Add these into the repo and reference them here]
+
+## Playing the demo file
+
+The demo file can be played by installing Quake on your machine, and moving the `.dem` file into your `id1` directory.
+Start quake and then enter the following command at the console:
+
+```playdemo <demo name>```

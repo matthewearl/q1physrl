@@ -1,10 +1,40 @@
+# Copyright (c) 2020 Matthew Earl
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+#     The above copyright notice and this permission notice shall be included
+#     in all copies or substantial portions of the Software.
+# 
+#     THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+#     OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+#     MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+#     NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+#     DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+#     OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+#     USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+"""
+Quake 1 physics gym environment definitions.
+
+Importing this module will register the 'Q1PhysEnv-v0' environment.  Alternatively, you can use the `PhysEnv` or
+`VectorPhysEnv` classes directly.
+
+"""
+
+
+
 import dataclasses
 import enum
-from typing import Tuple
+from typing import Optional, Tuple
 
 import gym.spaces
 import numpy as np
-import ray.rllib
 
 from . import phys
 
@@ -12,16 +42,13 @@ from . import phys
 __all__ = (
     'ActionToMove',
     'Config',
-    'eval',
-    'eval_coro',
+    'DEFAULT_CONFIG',
     'get_obs_scale',
     'INITIAL_YAW_ZERO',
     'Key',
     'Obs',
     'PhysEnv',
-    'SimpleConfig',
-    'SimplePhysEnv',
-    'SinglePhysEnv',
+    'VectorPhysEnv',
 )
 
 
@@ -52,24 +79,69 @@ class Obs(enum.IntEnum):
 
 @dataclasses.dataclass(frozen=True)
 class Config:
-    num_envs: int
-    auto_jump: bool # Automatically jump when approaching the floor
-    initial_yaw_range: Tuple[float, float] # Range of yaw values on the first step.
-    max_initial_speed: float # Maximum speed along the ground plane on the first step.
-    zero_start_prob: float # Probability of starting with zero speed at the first step.
-    # Physics frame time should be 0.01388888 to match quake but 0.014 is here for backwards compatibility.
-    time_delta: float = 0.014   
+    """Configuration for a PhysEnv / VectorPhysEnv.
+
+    Attributes:
+        num_envs: Number of environments.  Must be None iff used with a `PhysEnv`.
+        auto_jump: Automatically press jump when near the floor.
+        initial_yaw_range: Range of yaw values on the first step.
+        max_initial_speed: Maximum speed along the ground plane on the first step.
+        zero_start_prob: Probability of starting with zero speed at the first step.
+        time_delta: Time of each frame.
+        action_range: Continuous action value range.
+        time_limit: Episode length in seconds
+        key_press_delay: Minimum time between consecutive presses of the same key.
+        discrete_yaw_steps: How many discrete steps to use for the yaw action. Use -1 for a continuous yaw.  Does
+            nothing if allow_yaw is false.
+        speed_reward: Reward speed rather than velocity in y dir.
+        fmove_max: Corresponds with cl_forwardspeed.
+        smove_max: Corresponds with cl_sidespeed.
+        hover: No gravity, fixed initial speed
+        smooth_keys: Register half a key press on transitions
+        allow_jump: If auto-jump is False, then permit jumping with an action
+        allow_yaw: Have yaw dimension in action space.
+    """
+    num_envs: Optional[int]
+    auto_jump: bool
+    initial_yaw_range: Tuple[float, float]
+    max_initial_speed: float
+    zero_start_prob: float
+    time_delta: float = 0.014  # Rules state 1/72, but 0.014 is the default for backwards compatibility.
     action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
-    time_limit: float = 5 # Episode length in seconds
-    key_press_delay: float = 0.3    # Minimum time between consecutive presses of the same key.
-    discrete_yaw_steps: int = -1    # -1 = continuous.  Does nothing if allow_yaw is false.
-    speed_reward: bool = False  # reward speed rather than velocity in y dir.
-    fmove_max: float = 800.  # units per second
-    smove_max: float = 700.  # units per second
-    hover: bool = False     # No gravity, fixed initial speed
-    smooth_keys: bool = False  # Register half a key press on transitions
-    allow_jump: bool = True  # If auto-jump is False, then permit jumping with an action
-    allow_yaw: bool = True  # Have yaw dimension in action space.
+    time_limit: float = 5
+    key_press_delay: float = 0.3
+    discrete_yaw_steps: int = -1
+    speed_reward: bool = False
+    fmove_max: float = 800.
+    smove_max: float = 700.
+    hover: bool = False
+    smooth_keys: bool = False
+    allow_jump: bool = True
+    allow_yaw: bool = True
+
+    def conforms_to_rules(self):
+        """Indicate whether the config would be permitted under speed running rules."""
+        return self.time_delta == 1. / 72 and not self.hover
+
+
+DEFAULT_CONFIG = Config(
+    num_envs=None,
+    allow_jump=True,
+    allow_yaw=True,
+    auto_jump=False,
+    discrete_yaw_steps=-1,
+    fmove_max=800,
+    smove_max=1060,
+    hover=False,
+    initial_yaw_range=(0, 360),
+    key_press_delay=0.3,
+    max_initial_speed=700,
+    smooth_keys=True,
+    speed_reward=False,
+    time_delta=1. / 72,
+    time_limit=10.,
+    zero_start_prob=0.01,
+)
 
 
 class ActionToMove:
@@ -162,12 +234,16 @@ def get_obs_scale(config):
     return [config.time_limit, 90., 100, 200, 200, 200]
 
 
-class SinglePhysEnv(gym.Env):
+class PhysEnv(gym.Env):
+    """Quake 1 physics environment"""
     def __init__(self, config):
-        config = dict(config)
-        config['num_envs'] = 1
+        if isinstance(config, dict):
+            config = Config(**config)
+        if config.num_envs is not None:
+            assert config.num_envs is None, "num_envs must be None for PhysEnv"
+        config.num_envs = 1
 
-        self._env = PhysEnv(config)
+        self._env = VectorPhysEnv(config)
         self.observation_space = self._env.observation_space
         self.action_space = self._env.action_space
 
@@ -180,7 +256,21 @@ class SinglePhysEnv(gym.Env):
         return obs
 
 
-class PhysEnv(ray.rllib.env.VectorEnv):
+# For direct use with rllib VectorPhysEnv needs to inherit from VectorEnv, however when being used by PhysEnv a base
+# class is not required.
+try:
+    from ray.rllib.env import VectorEnv
+except ImportError:
+    VectorEnv = object
+
+
+class VectorPhysEnv(VectorEnv):
+    """Vectorized Quake 1 physics environment.
+    
+    This implements the `ray.rllib.env.VectorEnv` interface, however we don't explicitly subclass it so that `PhysEnv`
+    can be used without depending on rllib.
+
+    """
     player_state: phys.PlayerState
     _yaw: np.ndarray
     _time_remaining: np.ndarray
@@ -217,7 +307,9 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         return obs / self._obs_scale
 
     def __init__(self, config):
-        self._config = Config(**config)
+        if isinstance(config, dict):
+            config = Config(**config)
+        self._config = config
         self.num_envs = self._config.num_envs
 
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
@@ -317,91 +409,9 @@ class PhysEnv(ray.rllib.env.VectorEnv):
         return []
 
 
-@dataclasses.dataclass(frozen=True)
-class SimpleConfig:
-    num_envs: int
-    time_limit: float = 5
-    action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
-
-
-_SIMPLE_INITIAL_STATE = {'z_pos': np.float32(50),
-                         'vel': np.array([0, 320, 0], dtype=np.float32),
-                         'on_ground': np.bool(False),
-                         'jump_released': np.bool(True)}
-
-
-class SimplePhysEnv(ray.rllib.env.VectorEnv):
-    """An environment in which only yaw can be controlled, and the initial state doesn't change"""
-
-    _yaw: np.ndarray
-    _time_remaining: np.ndarray
-    _player_state: phys.PlayerState
-
-    def __init__(self, config):
-        self._config = SimpleConfig(**config)
-        self.num_envs = self._config.num_envs
-        self.action_space = gym.spaces.Box(
-                low=-self._config.action_range,
-                high=self._config.action_range,
-                shape=(1,),
-                dtype=np.float32)
-        self.observation_space = gym.spaces.Box(
-                low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
-        self._player_state = phys.PlayerState(
-            **{k: np.stack([v
-                            for _ in range(self.num_envs)])
-               for k, v in _SIMPLE_INITIAL_STATE.items()})
-
-    @property
-    def _obs_scale(self):
-        return [self._config.time_limit, 90]
-
-    def _get_obs(self):
-        return np.stack([self._time_remaining, self._yaw], axis=1) / self._obs_scale
-
-    def _get_obs_at(self, index):
-        return np.array([self._time_remaining[index], self._yaw[index]]) / self._obs_scale
-
-    def vector_reset(self):
-        self._time_remaining = np.full((self.num_envs,), self._config.time_limit, dtype=np.float32)
-        self._yaw = np.full((self.num_envs,), INITIAL_YAW_ZERO, dtype=np.float32)
-
-        return self._get_obs()
-
-    def reset_at(self, index):
-        self._time_remaining[index] = self._config.time_limit
-        self._yaw[index] = INITIAL_YAW_ZERO
-
-        return self._get_obs_at(index)
-
-    def vector_step(self, actions):
-        max_yaw_delta = _MAX_YAW_SPEED * self._config.time_delta
-
-        mouse_x_action = np.concatenate(actions) * max_yaw_delta / self._config.action_range
-        self._yaw = self._yaw + mouse_x_action
-
-        pitch = np.zeros((self.num_envs,), dtype=np.float32)
-        roll = np.zeros((self.num_envs,), dtype=np.float32)
-        fmove = np.full((self.num_envs,), 800., dtype=np.float32)
-        smove = np.zeros((self.num_envs,), dtype=np.float32)
-        button2 = np.full((self.num_envs,), False)
-        time_delta = np.full((self.num_envs,), self._config.time_delta)
-
-        inputs = phys.Inputs(yaw=self._yaw, pitch=pitch, roll=roll, fmove=fmove, smove=smove,
-                             button2=button2, time_delta=time_delta)
-
-        next_player_state = phys.apply(inputs, self._player_state)
-
-        reward = self._config.time_delta * np.linalg.norm(next_player_state.vel[:, :2], axis=1)
-
-        self._time_remaining -= self._config.time_delta
-        done = self._time_remaining < 0
-
-        if np.any(np.isnan(reward)):
-            print(reward)
-        return self._get_obs(), reward, done, [{} for i in range(self.num_envs)]
-
-    def get_unwrapped(self):
-        return []
-
-
+gym.envs.registration.register(
+    id='Q1PhysEnv-v0',
+    entry_point='q1physrl_env.env.PhysEnv',
+    nondeterministic=False,
+    kwargs={'config': DEFAULT_CONFIG},
+)
