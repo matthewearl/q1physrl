@@ -94,7 +94,6 @@ def train():
     while True:
         stats = trainer.train()
         print('Iteration:', i, 'Current:', {k: _get_stat(stats, k) for k in _STATS_TO_PRINT})
-        #pprint(stats)
 
         # Work out which (if any) stats just exceeded the previous best value.
         stats_to_save = []
@@ -113,7 +112,7 @@ def train():
             pprint(best_stats)
 
         # Periodically record some plots
-        if wandb is not None and i % 1 == 0:
+        if wandb is not None and i % params['plot_frequency'] == 0:
             import matplotlib.pyplot as plt
             import q1physrl.analyse
 
@@ -123,12 +122,6 @@ def train():
             r = q1physrl.analyse.eval_sim(trainer, eval_config)
             r.wish_angle_yaw_plot()
             wandb.log({'chart': plt})
-
-            d = Path(f"plots/{run_id}")
-            d.mkdir(parents=True, exist_ok=True)
-            output_path = d / f"{i:04d}.png"
-            plt.savefig(str(output_path))
-
             plt.close()
             print(f'Took {time.perf_counter() - start} seconds to record plot')
             

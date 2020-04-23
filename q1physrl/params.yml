@@ -34,3 +34,7 @@ trainer_config:
 
 # Pass the path to a checkpoint file here to restore from a previous run.
 checkpoint_fname: null
+
+# How often to record angle plots (if using wandb)
+plot_frequency: 5
+

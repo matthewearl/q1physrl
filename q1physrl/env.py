@@ -53,15 +53,15 @@ class Obs(enum.IntEnum):
 @dataclasses.dataclass(frozen=True)
 class Config:
     num_envs: int
-    auto_jump: bool
-    initial_yaw_range: Tuple[float, float]
-    max_initial_speed: float
-    zero_start_prob: float
+    auto_jump: bool # Automatically jump when approaching the floor
+    initial_yaw_range: Tuple[float, float] # Range of yaw values on the first step.
+    max_initial_speed: float # Maximum speed along the ground plane on the first step.
+    zero_start_prob: float # Probability of starting with zero speed at the first step.
     # Physics frame time should be 0.01388888 to match quake but 0.014 is here for backwards compatibility.
     time_delta: float = 0.014   
     action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
-    time_limit: float = 5
-    key_press_delay: float = 0.3
+    time_limit: float = 5 # Episode length in seconds
+    key_press_delay: float = 0.3    # Minimum time between consecutive presses of the same key.
     discrete_yaw_steps: int = -1    # -1 = continuous.  Does nothing if allow_yaw is false.
     speed_reward: bool = False  # reward speed rather than velocity in y dir.
     fmove_max: float = 800.  # units per second
