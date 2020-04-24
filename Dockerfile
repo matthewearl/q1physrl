@@ -23,11 +23,17 @@ RUN apt install -y libsdl2-dev && \
     cd quakespasm-hacks/quakespasm/Quake/ && \
     make
 
+# Install pyquake
+RUN git clone 'https://github.com/matthewearl/pyquake.git' pyquake && \
+    pip install -e pyquake
+
 # Install q1physrl (and dependencies)
 COPY archive.tar.gz .
 RUN tar zxvf archive.tar.gz && \
     pip install -r q1physrl/requirements_train.txt && \
-    pip install -e q1physrl && rm -r /root/.cache
+    pip install -e q1physrl/q1physrl_env && \
+    pip install -e q1physrl && \
+    rm -r /root/.cache
 
 # Expose tensorboard port.
 EXPOSE 6006
