@@ -88,13 +88,13 @@ async def make_demo(checkpoint_fname, params_fname, quakespasm_binary_fname, gam
 
     """
     with open(params_fname, 'r') as f:
-        config = env.Config(**json.load(f)['env_config'])
+        params = json.load(f)
 
     logger.info("Initializing ray")
     ray.init()
 
     logger.info("Making trainer")
-    trainer = train.make_trainer(train.make_run_config(config))
+    trainer = train.make_trainer({'trainer_class': 'PPOTrainer', 'trainer_config': params})
 
     logger.info("Spawning quakespasm server")
     proc = await asyncio.create_subprocess_exec(quakespasm_binary_fname,
@@ -111,7 +111,7 @@ async def make_demo(checkpoint_fname, params_fname, quakespasm_binary_fname, gam
     try:
         logger.info("Interacting with server")
         with open(demo_file_fname, 'wb') as f:
-            obs, action = await _eval_coro(dataclasses.asdict(config), 26000, trainer, f)
+            obs, action = await _eval_coro(params['env_config'], 26000, trainer, f)
         if obs_action_fname is not None:
             with open(obs_action_fname, 'wb') as f:
                 pickle.dump((obs, action), f)
