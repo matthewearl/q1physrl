@@ -12,7 +12,7 @@ import ray.rllib
 import yaml
 
 import q1physrl_env.env
-import q1physrl.action_dist
+import q1physrl.action_dist     # Import required for the action dist within to be usable
 
 try:
     import tensorboardX    # for some reason this is required with ray==0.8.2 for wandb to work
@@ -124,6 +124,5 @@ def train():
             wandb.log({'chart': plt})
             plt.close()
             print(f'Took {time.perf_counter() - start} seconds to record plot')
-            
-        i += 1
 
+        i += 1
