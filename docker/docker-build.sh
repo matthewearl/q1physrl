@@ -13,7 +13,11 @@ RM="$(which rm)"
     echo "File ${ARCHIVE_NAME} already exists. Please remove it first." 2>&1 && \
     exit 1
 
-"${GIT}" archive --format=tar.gz --prefix=q1physrl/ $(git stash create) > archive.tar.gz
+TREE="$(git stash create)"
+if [ -z "$TREE" ]; then
+    TREE="HEAD"
+fi
+"${GIT}" archive --format=tar.gz --prefix=q1physrl/ "$TREE" > archive.tar.gz
 "${DOCKER}" build . -t q1physrl
 
 "${RM}" archive.tar.gz
