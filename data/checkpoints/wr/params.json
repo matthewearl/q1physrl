@@ -1,0 +1,33 @@
+{
+  "callbacks": {
+    "on_episode_end": "<function _on_episode_end at 0x7f2ca920e730>"
+  },
+  "entropy_coeff": 0.01,
+  "env_config": {
+    "action_range": 10,
+    "auto_jump": false,
+    "discrete_yaw_steps": -1,
+    "fmove_max": 800,
+    "hover": false,
+    "initial_yaw_range": [
+      0,
+      360
+    ],
+    "key_press_delay": 0.3,
+    "max_initial_speed": 700.0,
+    "num_envs": 100,
+    "smooth_keys": true,
+    "smove_max": 1060,
+    "speed_reward": false,
+    "time_delta": 0.013888888888888888,
+    "time_limit": 10,
+    "zero_start_prob": 0.01
+  },
+  "gamma": 0.99,
+  "kl_target": 0.0036,
+  "lambda": 0.95,
+  "lr": 5e-06,
+  "num_workers": 4,
+  "train_batch_size": 50000,
+  "vf_clip_param": 100
+}
