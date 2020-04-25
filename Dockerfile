@@ -15,7 +15,8 @@ RUN wget https://ftp.gwdg.de/pub/misc/ftp.idsoftware.com/idstuff/quake/quake106.
 # Install the 100m map
 RUN wget https://downloads.teqnohaxor.com/quake/maps/100m.zip && \
     echo 'bbc92aa728aaaac2335f2a67ddd2c1b2b09a33403da604d7aa7e99e23b69c42b  100m.zip' | sha256sum --check && \
-    unzip 100m.zip -d quake-sw/id1
+    mkdir quake-sw/id1/maps && \
+    unzip 100m.zip -d quake-sw/id1/maps
 
 # Install modified quakespasm
 RUN apt install -y libsdl2-dev && \
