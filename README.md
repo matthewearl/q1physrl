@@ -1,6 +1,6 @@
 # Quake 1 Movement Physics Reinforcement Learning
 
-![Gif of RL agent running 100m]()
+![Gif of RL agent running 100m](https://raw.githubusercontent.com/matthewearl/q1physrl/master/data/wr.gif?token=AANBMSQGAU6MYFOH2KLMZES6URC6A)
 
 This is the source code for my Quake reinforcement learning project, which I gave an overview of in my video
 [Teaching a computer to strafe jump in Quake with reinforcement learning](https://www.youtube.com/watch?v=hx7kvTZLHYI).
