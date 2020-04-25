@@ -1,3 +1,13 @@
+# Quake 1 Movement Physics Reinforcement Learning
+
+![Gif of RL agent running 100m]()
+
+This is the source code for my Quake reinforcement learning project, which I gave an overview of in my video
+[Teaching a computer to strafe jump in Quake with reinforcement learning](https://www.youtube.com/watch?v=hx7kvTZLHYI).
+
+Below find instructions to use the gym environment, train your own model, and produce a demo file.
+
+
 ## Installing the gym env
 
 If you just want to play with the gym environment then you need only clone this repo and install the env package:
