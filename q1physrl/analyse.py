@@ -8,9 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyquake
 import ray
-from q1physrl_env import env
+from q1physrl_env import env, phys
 
-from . import phys
 from . import train
 
 
@@ -171,7 +170,7 @@ def draw_inputs(im, keys, yaw, xform):
 
 
 def eval_sim(trainer, env_config: env.Config):
-    e = env.PhysEnv(dataclasses.asdict(env_config))
+    e = env.VectorPhysEnv(dataclasses.asdict(env_config))
     o, = e.vector_reset()
     action_to_move = env.ActionToMove(env_config)
     action_to_move.vector_reset(e._yaw)
