@@ -241,7 +241,7 @@ class PhysEnv(gym.Env):
             config = Config(**config)
         if config.num_envs is not None:
             assert config.num_envs is None, "num_envs must be None for PhysEnv"
-        config.num_envs = 1
+        config = dataclasses.replace(config, num_envs=1)
 
         self._env = VectorPhysEnv(config)
         self.observation_space = self._env.observation_space

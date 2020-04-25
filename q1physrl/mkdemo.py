@@ -91,10 +91,11 @@ async def make_demo(checkpoint_fname, params_fname, quakespasm_binary_fname, gam
         params = json.load(f)
 
     logger.info("Initializing ray")
-    ray.init()
+    ray.init(memory=100 << 20, object_store_memory=100 << 20)
 
     logger.info("Making trainer")
     trainer = train.make_trainer({'trainer_class': 'PPOTrainer', 'trainer_config': params})
+    trainer.restore(checkpoint_fname)
 
     logger.info("Spawning quakespasm server")
     proc = await asyncio.create_subprocess_exec(quakespasm_binary_fname,

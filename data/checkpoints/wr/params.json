@@ -27,6 +27,9 @@
   "kl_target": 0.0036,
   "lambda": 0.95,
   "lr": 5e-06,
+  "model": {
+    "custom_action_dist": "q1_phys_action_dist"
+  },
   "num_workers": 4,
   "train_batch_size": 50000,
   "vf_clip_param": 100
