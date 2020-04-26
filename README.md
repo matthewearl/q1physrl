@@ -31,9 +31,10 @@ Follow these instructions if you want to train the model used in the video:
 Install this repo and its requirements:
 ```
 git clone 'https://github.com/matthewearl/q1physrl.git'
-pip install -r q1physrl/requirements_q1physrl.txt
-pip install -e q1physrl/q1physrl_env
-pip install -e q1physrl/q1physrl
+cd q1physrl
+pip install -r requirements_q1physrl.txt
+pip install -e q1physrl_env
+pip install -e .
 ```
 
 2. (Optional.) To log to Weights and Biases (including logging angle plots with matplotlib) run:
@@ -48,7 +49,7 @@ Alternatively, you can just view results on tensorboard with `tensorboard -logdi
 3. Finally, run:
 
 ```
-q1physrl_train q1physrl/params.yml
+q1physrl_train data/params.yml
 ```
 
 ...and wait for convergence.  Modify the file referenced in the argument to change hyper-parameters and environment

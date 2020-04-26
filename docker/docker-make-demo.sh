@@ -37,7 +37,7 @@ fi
 HOST_CMD="
 pip install -r binds/q1physrl-host/requirements_q1physrl.txt &&
 pip install -v binds/q1physrl-host/q1physrl_env &&
-pip install -v binds/q1physrl-host
+pip install -v binds/q1physrl-host &&
 q1physrl_make_demo \\
     /ws/binds/checkpoint \\
     /ws/binds/params.json \\
@@ -55,6 +55,6 @@ q1physrl_make_demo \\
     --mount type=bind,source="$METADATA_FNAME",destination=/ws/binds/checkpoint.tune_metadata,readonly \
     --mount type=bind,source="$PARAMS_FNAME",destination=/ws/binds/params.json,readonly \
     --mount type=bind,source="$DEMO_FNAME",destination=/ws/binds/temp.dem \
-    q1physrl \
+    matthewearl/q1physrl:q1physrl \
     bash -e -c "${HOST_CMD}"
 
