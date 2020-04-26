@@ -52,7 +52,9 @@ q1physrl_train q1physrl/params.yml
 
 ...and wait for convergence.  Modify the file referenced in the argument to change hyper-parameters and environment
 settings.  My current PB (the one in the video) gets about 5700 on the `zero_start_total_reward_mean` metric, after 150
-million steps, which takes about a day on my i7-6700K.
+million steps, which takes about a day on my i7-6700K.  I'm using RLLib's implementation of PPO --- see the [RLLib PPO
+docs](https://docs.ray.io/en/latest/rllib-algorithms.html#proximal-policy-optimization-ppo) to see how you can tweak the
+algorithm parameters.  See [q1physrl_env.env.Config](/q1physrl_env/q1physrl_env/env.py#L81) for environment parameters.
 
 RLLib will write checkpoint files and run parameters into `~/ray_results`, which will be needed to produce a demo file
 (see *Producing a Quake demo file* below).
