@@ -6,7 +6,7 @@ WORKDIR ws
 RUN apt update -y
 
 # Install the 100m map
-RUN wget https://downloads.teqnohaxor.com/quake/maps/100m.zip && \
+RUN wget http://quake.speeddemosarchive.com/quake/maps/100m.zip && \
     echo 'bbc92aa728aaaac2335f2a67ddd2c1b2b09a33403da604d7aa7e99e23b69c42b  100m.zip' | sha256sum --check && \
     mkdir -p quake-base/id1/maps && \
     unzip 100m.zip -d quake-base/id1/maps
