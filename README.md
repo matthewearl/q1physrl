@@ -14,11 +14,12 @@ If you just want to play with the gym environment then you need only clone this 
 
 ```
 git clone 'https://github.com/matthewearl/q1physrl.git'
-pip install -e q1physrl_env
+pip install -e q1physrl/q1physrl_env
 ```
 
-The environment ID is `Q1PhysEnv-v0`.  The environment accepts a single argument `config` which is an instance of
-`q1phys_env.env.Config`.  See the docstring for this class for more details.
+The environment ID is `Q1PhysEnv-v0` which is registered by importing `q1physrl_env.env`.  The environment accepts a
+single argument `config` which is an instance of `q1phys_env.env.Config`.  See the docstring for this class for more
+details.
 
 
 ## Training
@@ -31,8 +32,8 @@ Install this repo and its requirements:
 ```
 git clone 'https://github.com/matthewearl/q1physrl.git'
 pip install -r q1physrl/requirements_q1physrl.txt
-pip install -e q1physrl_env
-pip install -e q1physrl
+pip install -e q1physrl/q1physrl_env
+pip install -e q1physrl/q1physrl
 ```
 
 2. (Optional.) To log to Weights and Biases (including logging angle plots with matplotlib) run:

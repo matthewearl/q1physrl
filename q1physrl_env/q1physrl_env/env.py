@@ -411,7 +411,7 @@ class VectorPhysEnv(VectorEnv):
 
 gym.envs.registration.register(
     id='Q1PhysEnv-v0',
-    entry_point='q1physrl_env.env.PhysEnv',
+    entry_point='q1physrl_env.env:PhysEnv',
     nondeterministic=False,
     kwargs={'config': DEFAULT_CONFIG},
 )
