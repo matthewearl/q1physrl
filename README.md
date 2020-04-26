@@ -6,8 +6,8 @@ This is the source code for my Quake reinforcement learning project, which I des
 ["Teaching a computer to strafe jump in Quake with reinforcement learning"](https://www.youtube.com/watch?v=hx7kvTZLHYI).
 
 To summarize, I developed a facsimile of Quake player movement physics in Python, wrapped with an OpenAI `gym.Env`.  I
-then trained an agent for this using PPO and RLLib.  In the end the agent was able to beat the current human speedrun
-record holder on this map (9.688s).
+then trained an agent for this using RLLib's implementation of PPO.  In the end the agent was able to beat the current
+human speedrun record on a speed running practice map.
 
 Find below instructions to use the gym environment, train your own model, and produce a demo file.
 
