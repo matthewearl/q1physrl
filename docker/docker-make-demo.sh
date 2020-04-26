@@ -35,7 +35,7 @@ else
 fi
 
 HOST_CMD="
-pip install -r binds/q1physrl-host/requirements_train.txt &&
+pip install -r binds/q1physrl-host/requirements_q1physrl.txt &&
 pip install -v binds/q1physrl-host/q1physrl_env &&
 pip install -v binds/q1physrl-host
 q1physrl_make_demo \\

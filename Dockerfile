@@ -24,7 +24,7 @@ RUN git clone 'https://github.com/matthewearl/pyquake.git' pyquake && \
 # Install q1physrl (and dependencies)
 COPY archive.tar.gz .
 RUN tar zxvf archive.tar.gz && \
-    pip install -r q1physrl/requirements_train.txt && \
+    pip install -r q1physrl/requirements_q1physrl.txt && \
     pip install -e q1physrl/q1physrl_env && \
     pip install -e q1physrl && \
     rm -r /root/.cache

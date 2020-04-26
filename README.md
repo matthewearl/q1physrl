@@ -30,7 +30,7 @@ Follow these instructions if you want to train the model used in the video:
 Install this repo and its requirements:
 ```
 git clone 'https://github.com/matthewearl/q1physrl.git'
-pip install -r q1physrl/requirements_train.txt
+pip install -r q1physrl/requirements_q1physrl.txt
 pip install -e q1physrl_env
 pip install -e q1physrl
 ```
@@ -52,7 +52,11 @@ q1physrl_train q1physrl/params.yml
 
 ...and wait for convergence.  Modify the file referenced in the argument to change hyper-parameters and environment
 settings.  My current PB (the one in the video) gets about 5700 on the `zero_start_total_reward_mean` metric, after 150
-million steps, which takes about a day on my i7-6700K.  I'm using RLLib's implementation of PPO --- see the [RLLib PPO
+million steps, which takes about a day on my i7-6700K:
+
+![screenshot of training curve](/data/images/train.png)
+
+I'm using RLLib's implementation of PPO --- see the [RLLib PPO
 docs](https://docs.ray.io/en/latest/rllib-algorithms.html#proximal-policy-optimization-ppo) to see how you can tweak the
 algorithm parameters.  See [q1physrl_env.env.Config](/q1physrl_env/q1physrl_env/env.py#L81) for environment parameters.
 
