@@ -6,7 +6,7 @@ WORKDIR ws
 RUN apt update -y
 
 # Install the 100m map
-RUN wget https://downloads.teqnohaxor.com/quake/maps/100m.zip && \
+RUN wget http://quake.speeddemosarchive.com/quake/maps/100m.zip && \
     echo 'bbc92aa728aaaac2335f2a67ddd2c1b2b09a33403da604d7aa7e99e23b69c42b  100m.zip' | sha256sum --check && \
     mkdir -p quake-base/id1/maps && \
     unzip 100m.zip -d quake-base/id1/maps
@@ -24,7 +24,7 @@ RUN git clone 'https://github.com/matthewearl/pyquake.git' pyquake && \
 # Install q1physrl (and dependencies)
 COPY archive.tar.gz .
 RUN tar zxvf archive.tar.gz && \
-    pip install -r q1physrl/requirements_train.txt && \
+    pip install -r q1physrl/requirements_q1physrl.txt && \
     pip install -e q1physrl/q1physrl_env && \
     pip install -e q1physrl && \
     rm -r /root/.cache
