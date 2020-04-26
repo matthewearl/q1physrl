@@ -5,6 +5,10 @@
 This is the source code for my Quake reinforcement learning project, which I described in my video
 ["Teaching a computer to strafe jump in Quake with reinforcement learning"](https://www.youtube.com/watch?v=hx7kvTZLHYI).
 
+To summarize, I developed a facsimile of Quake player movement physics in Python, wrapped with an OpenAI `gym.Env`.  I
+then trained an agent for this using PPO and RLLib.  In the end the agent was able to beat the current human speedrun
+record holder on this map (9.688s).
+
 Find below instructions to use the gym environment, train your own model, and produce a demo file.
 
 
@@ -24,7 +28,8 @@ details.
 
 ## Training
 
-Follow these instructions if you want to train the model used in the video:
+If instead you want to train the model used in the video, including trying out new hyper parameters and environment
+settings, then follow the steps below:
 
 1. Set up a clean virtualenv using Python 3.7 or greater (tested with Python 3.7.2).
 
@@ -45,6 +50,7 @@ pip install wandb
 wandb init
 ```
 Alternatively, you can just view results on tensorboard with `tensorboard -logdir ~/ray_results`.
+
 
 3. Finally, run:
 
@@ -124,3 +130,4 @@ can make this happen:
 ![Corrected initial drop plot](/data/images/initial_drop_corrected.png)
 
 This is the correction applied in the comparison plot in the video.
+
