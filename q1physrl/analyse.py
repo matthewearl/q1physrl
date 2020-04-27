@@ -24,8 +24,6 @@ import dataclasses
 import sys
 from pathlib import Path
 
-import matplotlib
-import matplotlib.pyplot as plt
 import numpy as np
 import ray
 from q1physrl_env import env, phys
@@ -43,6 +41,7 @@ def parse_demo(fname):
     yaws = []
 
     time = None
+    finish_time = None
 
     def patch_vec(old_vec, update):
         return tuple(v if u is None else u for v, u in zip(old_vec, update))
@@ -63,8 +62,10 @@ def parse_demo(fname):
                 origins.append(origin)
                 times.append(time)
                 yaws.append(angles[1])
+            if msg.msg_type == pyquake.proto.ServerMessageType.INTERMISSION:
+                finish_time = time
 
-    return np.array(times), np.array(origins), np.array(yaws)
+    return np.array(times), np.array(origins), np.array(yaws), finish_time
 
 
 @dataclasses.dataclass
@@ -117,6 +118,8 @@ class EvalSimResult:
         return np.stack(delta_speeds)
 
     def wish_angle_yaw_plot(self, figsize=(20, 16)):
+        import matplotlib.pyplot as plt
+
         delta_speeds = self.hypothetical_delta_speeds
         wish_angle = self.wish_angle
 
@@ -238,6 +241,9 @@ def eval_sim(trainer, env_config: env.Config):
 
 
 def plot_all_checkpoints():
+    import matplotlib
+    import matplotlib.pyplot as plt
+
     matplotlib.use('Agg')
 
     config = env.Config(

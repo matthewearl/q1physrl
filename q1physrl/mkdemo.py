@@ -20,7 +20,6 @@
 
 
 import asyncio
-import dataclasses
 import json
 import logging
 import pickle
@@ -31,7 +30,7 @@ import numpy as np
 import ray
 from q1physrl_env import env
 
-from . import train
+from . import analyse, train
 
 
 logger = logging.getLogger(__name__)
@@ -142,6 +141,12 @@ async def make_demo(checkpoint_fname, params_fname, quakespasm_binary_fname, gam
 
     logger.info("Waiting for quakespasm to exit")
     await proc.wait()
+
+    logger.info("Loading demo to find finish time")
+    times, origins, yaws, finish_time = analyse.parse_demo(demo_file_fname)
+    # Games recorded using the usual method start at ~1.356 seconds, so account for that here.
+    corrected_finish_time = finish_time + (1.3 + 4. / 72) - times[0]
+    logger.info("Corrected finish time: %s s", corrected_finish_time)
 
 
 def make_demo_entrypoint():
