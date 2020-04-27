@@ -27,7 +27,6 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import pyquake
 import ray
 from q1physrl_env import env, phys
 
@@ -35,6 +34,8 @@ from . import train
 
 
 def parse_demo(fname):
+    import pyquake
+
     view_entity = None
     origin = None
     origins = []
