@@ -22,8 +22,8 @@ pip install -e q1physrl/q1physrl_env
 ```
 
 The environment ID is `Q1PhysEnv-v0` which is registered by importing `q1physrl_env.env`.  The environment accepts a
-single argument `config` which is an instance of `q1phys_env.env.Config`.  See the docstring for this class for more
-details.
+single argument `config` which is an instance of `q1phys_env.env.Config`.  See the
+[docstring for this class](/q1physrl_env/q1physrl_env/env.py#L81) for more details.
 
 
 ## Training
@@ -49,8 +49,7 @@ pip install matplotlib
 pip install wandb
 wandb init
 ```
-Alternatively, you can just view results on tensorboard with `tensorboard -logdir ~/ray_results`.
-
+Alternatively, you can just view results with tensorboard (see below).
 
 3. Finally, run:
 
@@ -64,12 +63,24 @@ million steps, which takes about a day on my i7-6700K:
 
 ![screenshot of training curve](/data/images/train.png)
 
+Ray (the framework which RLLib is a part of) will launch a web server on
+[http://localhost:8265/](http://localhost:8265/) showing a dashboard of useful information, including an embedded
+tensorboard instance.
+
 I'm using RLLib's implementation of PPO --- see the [RLLib PPO
 docs](https://docs.ray.io/en/latest/rllib-algorithms.html#proximal-policy-optimization-ppo) to see how you can tweak the
 algorithm parameters.  See [q1physrl_env.env.Config](/q1physrl_env/q1physrl_env/env.py#L81) for environment parameters.
 
 RLLib will write checkpoint files and run parameters into `~/ray_results`, which will be needed to produce a demo file
-(see *Producing a Quake demo file* below).
+(see *Producing a Quake demo file* below).   The checkpoint files can also be used to resume a previous run by
+setting `checkpoint_fname` in `params.yml`.  To use a different results directory, set the `TUNE_RESULT_DIR` environment
+variable.   
+
+
+## Analysis
+
+Use [this notebook](/notebooks/Analyse.ipynb) to analyse the checkpoints produced from training. Click through to see
+an example of what it produces.
 
 
 ## Producing a Quake demo file
