@@ -31,7 +31,7 @@ single argument `config` which is an instance of `q1phys_env.env.Config`.  See t
 If instead you want to train the model used in the video, including trying out new hyper parameters and environment
 settings, then follow the steps below:
 
-1. Set up a clean virtualenv using Python 3.7 or greater (tested with Python 3.7.2).
+1. Set up a clean virtualenv using Python 3.7.x (tested with Python 3.7.2).
 
 Install this repo and its requirements:
 ```
@@ -42,16 +42,7 @@ pip install -e q1physrl_env
 pip install -e .
 ```
 
-2. (Optional.) To log to Weights and Biases (including logging angle plots with matplotlib) run:
-
-```
-pip install matplotlib
-pip install wandb
-wandb init
-```
-Alternatively, you can just view results with tensorboard (see below).
-
-3. Finally, run:
+2. Run:
 
 ```
 q1physrl_train data/params.yml
@@ -64,16 +55,16 @@ million steps, which takes about a day on my i7-6700K:
 ![screenshot of training curve](/data/images/train.png)
 
 Ray (the framework which RLLib is a part of) will launch a web server on
-[http://localhost:8265/](http://localhost:8265/) showing a dashboard of useful information, including an embedded
-tensorboard instance.
+[http://localhost:8265/](http://localhost:8265/) showing a dashboard of useful information. This includes an embedded
+tensorboard instance on which you can track the `zero_start_total_reward_mean` metric and others.
 
 I'm using RLLib's implementation of PPO --- see the [RLLib PPO
 docs](https://docs.ray.io/en/latest/rllib-algorithms.html#proximal-policy-optimization-ppo) to see how you can tweak the
 algorithm parameters.  See [q1physrl_env.env.Config](/q1physrl_env/q1physrl_env/env.py#L81) for environment parameters.
 
-RLLib will write checkpoint files and run parameters into `~/ray_results`, which will be needed to produce a demo file
-(see *Producing a Quake demo file* below).   The checkpoint files can also be used to resume a previous run by
-setting `checkpoint_fname` in `params.yml`.  To use a different results directory, set the `TUNE_RESULT_DIR` environment
+RLLib will write checkpoint files and run parameters into `~/ray_results`, which will be needed to do analysis and
+produce a demo file (see below).   The checkpoint files can also be used to resume a previous run by setting
+`checkpoint_fname` in `params.yml`.  To use a different results directory set the `TUNE_RESULT_DIR` environment
 variable.   
 
 
