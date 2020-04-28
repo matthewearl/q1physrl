@@ -105,7 +105,7 @@ def train():
         run_id = f"{run_id}_{run.id}"
 
     # Initialize ray, and the trainer
-    ray.init()
+    ray.init(memory=100 << 20, object_store_memory=100 << 20)
     trainer = make_trainer(params)
     if params['checkpoint_fname'] is not None:
         trainer.restore(params['checkpoint_fname'])
