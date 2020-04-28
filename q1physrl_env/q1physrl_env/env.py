@@ -28,10 +28,9 @@ Importing this module will register the 'Q1PhysEnv-v0' environment.  Alternative
 """
 
 
-
 import dataclasses
 import enum
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import gym.spaces
 import numpy as np
@@ -40,9 +39,8 @@ from . import phys
 
 
 __all__ = (
-    'ActionToMove',
+    'ActionDecoder',
     'Config',
-    'DEFAULT_CONFIG',
     'get_obs_scale',
     'INITIAL_YAW_ZERO',
     'Key',
@@ -52,8 +50,7 @@ __all__ = (
 )
 
 
-_DEFAULT_TIME_DELTA = np.float32(0.014)
-_MAX_YAW_SPEED = np.float32(2 * 360)  # degrees per second
+# These are chosen to match the initial state of the player on the 100m map.
 _INITIAL_STATE = {'z_pos': np.float32(32.843201),
                   'vel': np.array([0, 0, -12], dtype=np.float32),
                   'on_ground': np.bool(False),
@@ -62,13 +59,25 @@ INITIAL_YAW_ZERO = np.float32(90)
 
 
 class Key(enum.IntEnum):
+    """Enumeration of input keys.
+
+    These correspond with action vector indices, eg. action[Key.FORWARD] indicates the agent's desire to move forward.
+
+    Note that the mouse x action (by default continuous) is also included in the action vector, but it isn't included
+    here.
+
+    """
     STRAFE_LEFT = 0
     STRAFE_RIGHT = enum.auto()
     FORWARD = enum.auto()
-    JUMP = enum.auto()   # Not used if _AUTO_JUMP is true
+    JUMP = enum.auto()   # Not used if allow_jump or auto_jump is true
 
 
 class Obs(enum.IntEnum):
+    """
+
+    """
+
     TIME_LEFT = 0
     YAW = enum.auto()
     Z_POS = enum.auto()
@@ -77,75 +86,115 @@ class Obs(enum.IntEnum):
     Z_VEL = enum.auto()
 
 
+# These are just used for calculation of the Config.action_range default value.
+_DEFAULT_TIME_DELTA = np.float32(0.014)
+_MAX_YAW_SPEED = np.float32(2 * 360)  # degrees per second
+
+
 @dataclasses.dataclass(frozen=True)
 class Config:
     """Configuration for a PhysEnv / VectorPhysEnv.
 
     Attributes:
         num_envs: Number of environments.  Must be None iff used with a `PhysEnv`.
-        auto_jump: Automatically press jump when near the floor.
-        initial_yaw_range: Range of yaw values on the first step.
-        max_initial_speed: Maximum speed along the ground plane on the first step.
-        zero_start_prob: Probability of starting with zero speed at the first step.
+        zero_start_prob: Probability of a given episode being a zero start, ie the probability of not having randomized
+            initial values.  Higher values give more accurate zero start metrics, but may hinder exploration.
+        initial_yaw_range: When not doing a zero start, gives the range of yaw values that can be taken on the first
+            step.
+        max_initial_speed: When not doing a zero start, gives the maximum initial speed along the ground plane.
         time_delta: Time of each frame.
-        action_range: Continuous action value range.
+        action_range: Min and max bounds for the action space's mouse dimension.
         time_limit: Episode length in seconds
-        key_press_delay: Minimum time between consecutive presses of the same key.
-        discrete_yaw_steps: How many discrete steps to use for the yaw action. Use -1 for a continuous yaw.  Does
-            nothing if allow_yaw is false.
-        speed_reward: Reward speed rather than velocity in y dir.
-        fmove_max: Corresponds with cl_forwardspeed.
-        smove_max: Corresponds with cl_sidespeed.
-        hover: No gravity, fixed initial speed
-        smooth_keys: Register half a key press on transitions
-        allow_jump: If auto-jump is False, then permit jumping with an action
-        allow_yaw: Have yaw dimension in action space.
+        allow_yaw: Have a mouse dimension in the action space.
+        discrete_yaw_steps: How many discrete steps to use for the mouse action dimension. Use -1 for continuous.
+            Does nothing if allow_yaw is false.
+        speed_reward: Reward speed rather than y component of the velocity.
+        fmove_max: Corresponds with cl_forwardspeed.  When forward is pressed, a forward facing component is added to
+            the player's wish direction.  The magnitude of this component is given by this value.
+        smove_max: Corresponds with cl_sidespeed.  Same as fmove_max but for side facing components.
+        hover: No gravity, fixed initial speed.  Use to learn air movement physics without being concerned about 
+        key_press_delay: Minimum time in seconds between consecutive presses of the same key.  This means the relevant
+            element of the action vector will be internally set to zero if there have been two key down events in the
+            last `key_press_delay` seconds.  Here a "key down" event means a 0-1 transition of the action vector
+            element.
+        smooth_keys: On the first frame after a key is pressed, apply only half of `fmove_max`/`smove_max` to the
+            relevant wish direction component.  This is applied after `key_press_delay`.
+        auto_jump: Automatically press jump when near the floor.  The action space does not include the jump key in this
+            case.
+        allow_jump: If auto-jump is False, then permit jumping with an action.  Without this the player will be bound to
+            the floor (unless `hover` is also set).
+
     """
+    # The defaults assigned here are just for backwards compatibility of my own experiments.  See `get_default` for the
+    # real defaults.
     num_envs: Optional[int]
-    auto_jump: bool
+    zero_start_prob: float
     initial_yaw_range: Tuple[float, float]
     max_initial_speed: float
-    zero_start_prob: float
     time_delta: float = 0.014  # Rules state 1/72, but 0.014 is the default for backwards compatibility.
     action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
     time_limit: float = 5
-    key_press_delay: float = 0.3
+    allow_yaw: bool = True
     discrete_yaw_steps: int = -1
     speed_reward: bool = False
     fmove_max: float = 800.
     smove_max: float = 700.
     hover: bool = False
+    key_press_delay: float = 0.3
     smooth_keys: bool = False
+    auto_jump: bool = False
     allow_jump: bool = True
-    allow_yaw: bool = True
+
+    @classmethod
+    def get_default(cls):
+        """These are the defaults that are used when an envirionment is made via `gym.make`."""
+        return cls(
+            num_envs=None,
+            allow_jump=True,
+            allow_yaw=True,
+            auto_jump=False,
+            discrete_yaw_steps=-1,
+            fmove_max=800,  # These fmove_max and smove_max defaults seem to work well.
+            smove_max=1060,
+            hover=False,
+            initial_yaw_range=(0, 360),
+            key_press_delay=0.3,
+            max_initial_speed=700,
+            smooth_keys=True,
+            speed_reward=False,
+            time_delta=1. / 72,
+            time_limit=10.,
+            zero_start_prob=0.01,
+        )
 
     def conforms_to_rules(self):
-        """Indicate whether the config would be permitted under speed running rules."""
+        """Indicate whether the config would be permitted under speed running rules.
+        
+        See http://quake.speeddemosarchive.com/quake/rules.html for list of normal rules.  Clearly we're breaking rules
+        about tool assistance, but by "permitted" here I mean that applying the generated movements to a legally
+        configured Quake would yield the same results.
+
+        """
         return self.time_delta == 1. / 72 and not self.hover
 
 
-DEFAULT_CONFIG = Config(
-    num_envs=None,
-    allow_jump=True,
-    allow_yaw=True,
-    auto_jump=False,
-    discrete_yaw_steps=-1,
-    fmove_max=800,
-    smove_max=1060,
-    hover=False,
-    initial_yaw_range=(0, 360),
-    key_press_delay=0.3,
-    max_initial_speed=700,
-    smooth_keys=True,
-    speed_reward=False,
-    time_delta=1. / 72,
-    time_limit=10.,
-    zero_start_prob=0.01,
-)
+class ActionDecoder:
+    """Convert a sequence of actions into a sequence of move commands
+    
+    Like `VectorEnv`, this class is vectorized, ie. it actually maps actions for many environments into many movement
+    commands, however for simplicity the docstrings refer to variables in the singular.
 
+    The decoder performs these tasks:
+        - Scales the mouse x action such that the number of degrees turned per second is between `-_MAX_YAW_SPEED` and
+          `_MAX_YAW_SPEED`.
+        - Rate limit key presses.  See `Config.key_press_delay` for details of how this works.
+        - Smooth transitions of key presses.  See `Config.smooth_keys` for details of how this works.
+        - Automatically send a jump command when near the floor if `auto_jump` is set.
 
-class ActionToMove:
-    """Convert a sequence of actions into a sequence of move commands"""
+    The decoder is stateful (in order to do things like rate limit key presses) as such it needs to be reset along with
+    the corresponding environment.
+
+    """
     _last_key_press_time: np.ndarray
     _last_keys: np.ndarray
     _yaw: np.ndarray
@@ -172,6 +221,7 @@ class ActionToMove:
         return np.array([[np.ravel(x)[0] for x in a] for a in actions])
 
     def map(self, actions, z_vel, time_remaining):
+        """Take an action vector and map it to a move command."""
         actions = self._fix_actions(actions)
         key_actions = actions[:, :self._num_keys].astype(np.int)
 
@@ -204,7 +254,6 @@ class ActionToMove:
         self._last_keys = keys
 
         self._yaw = self._yaw + mouse_x_action
-        #self._yaw = np.full((keys.shape[0],), 100.)
         strafe_keys = smoothed_keys[:, Key.STRAFE_RIGHT] - smoothed_keys[:, Key.STRAFE_LEFT]
         smove = np.float32(self._config.smove_max) * strafe_keys
         fmove = np.float32(self._config.fmove_max) * smoothed_keys[:, Key.FORWARD]
@@ -218,6 +267,11 @@ class ActionToMove:
         return self._yaw, smove.astype(np.int), fmove.astype(np.int), jump.astype(np.bool)
 
     def vector_reset(self, yaw):
+        """Reset the state of the action decoder.
+
+        Called before starting a new episode.
+
+        """
         self._last_key_press_time = np.full((self._config.num_envs, self._num_keys),
                                             -self._config.key_press_delay)
         self._last_keys = np.full((self._config.num_envs, self._num_keys), False)
@@ -225,18 +279,61 @@ class ActionToMove:
         self._yaw = np.array(yaw)
 
     def reset_at(self, index, yaw):
+        """Reset the state of a single element of the action decoder.
+
+        Called before starting a new episode.
+
+        """
         self._last_key_press_time[index] = -self._config.key_press_delay
         self._last_keys[index] = False
         self._yaw[index] = yaw
 
 
 def get_obs_scale(config):
+    """Observation values are normalized by dividing by these values before being returned."""
     return [config.time_limit, 90., 100, 200, 200, 200]
 
 
 class PhysEnv(gym.Env):
-    """Quake 1 physics environment"""
-    def __init__(self, config):
+    """Quake 1 physics environment
+    
+    The environment models the player movement physics of Quake.  To keep things simple, the world is treated as a flat
+    plane with no obstacles, with the objective of moving as far along the y-axis as possible in a ten second time
+    limit.  The physics modelling is accurate enough that it can run the 100m practice map mentioned above in the real
+    game, after being trained on the simulated environment.
+
+    The below describes the default behaviour of the environment, but many of the parameters can be tweaked via the
+    config.  See `Config` for details.
+
+    By default the environment has a tuple action space consisting of:
+    - Four discrete "keys", corresponding with left, right, forward, and jump.
+    - A continuous dimension indicating how much the yaw should change in the next frame.  This says how far the player
+      should turn left or right in this frame.
+
+    Actions are decoded by the `ActionDecoder` class which translates action vectors into movement commands to be sent
+    to the Quake simulant.  See `ActionDecoder` for details.
+
+    The observation space is a six dimensional box and indicates:
+    - Time remaining in the episode.
+    - Player's current yaw angle.
+    - Z (height) position.
+    - X, Y, and Z velocity.
+
+    Observations are normalized to be more or less between zero and one.
+
+    Rewards correspond with how far the player travels along the Y-axis in the given frame (Z is up).
+
+    In order to aid exploration the following aspects of the initial state are randomized:
+    - Time remaining.
+    - Player velocity.
+    - Player yaw.
+    - Player angle.
+
+    1% of episodes start with a fixed initial state chosen to match that of a freshly spawned player in the real game.
+    If this is the case, then the info dict indicates as such with the `zero_start` field.
+
+    """
+    def __init__(self, config: Union[Config, dict]):
         if isinstance(config, dict):
             config = Config(**config)
         if config.num_envs is not None:
@@ -266,10 +363,9 @@ except ImportError:
 
 class VectorPhysEnv(VectorEnv):
     """Vectorized Quake 1 physics environment.
-    
-    This implements the `ray.rllib.env.VectorEnv` interface, however we don't explicitly subclass it so that `PhysEnv`
-    can be used without depending on rllib.
 
+    This is the vectorized form of `PhysEnv` --- see its docstring for details.
+    
     """
     player_state: phys.PlayerState
     _yaw: np.ndarray
@@ -319,8 +415,8 @@ class VectorPhysEnv(VectorEnv):
 
         self._obs_scale = get_obs_scale(self._config)
 
-        self._action_to_move = ActionToMove(self._config)
-        self.action_space = self._action_to_move.action_space
+        self._action_decoder = ActionDecoder(self._config)
+        self.action_space = self._action_decoder.action_space
         self._step_num = 0
         self.vector_reset()
 
@@ -340,18 +436,12 @@ class VectorPhysEnv(VectorEnv):
                          0,
                          np.random.uniform(self._config.max_initial_speed, size=(self.num_envs,)))
 
-        if self._config.hover:
-            speed[:] = 320
-
         move_angle = np.random.uniform(2 * np.pi, size=(self.num_envs,))
-
-        if self._config.hover:
-            move_angle[:] = np.pi / 2
 
         self.player_state.vel[:, 0] = speed * np.cos(move_angle)
         self.player_state.vel[:, 1] = speed * np.sin(move_angle)
 
-        self._action_to_move.vector_reset(self._yaw)
+        self._action_decoder.vector_reset(self._yaw)
 
         return self._get_obs()
 
@@ -371,7 +461,7 @@ class VectorPhysEnv(VectorEnv):
         self.player_state.vel[index, 0] = speed * np.cos(move_angle)
         self.player_state.vel[index, 1] = speed * np.sin(move_angle)
 
-        self._action_to_move.reset_at(index, self._yaw[index])
+        self._action_decoder.reset_at(index, self._yaw[index])
 
         return self._get_obs_at(index)
 
@@ -381,7 +471,7 @@ class VectorPhysEnv(VectorEnv):
             self.player_state.z_pos[:] = 100
 
         z_vel = self.player_state.vel[:, 2]
-        self._yaw, smove, fmove, jump = self._action_to_move.map(actions, z_vel, self._time_remaining)
+        self._yaw, smove, fmove, jump = self._action_decoder.map(actions, z_vel, self._time_remaining)
 
         pitch = np.zeros((self.num_envs,), dtype=np.float32)
         roll = np.zeros((self.num_envs,), dtype=np.float32)
@@ -413,5 +503,5 @@ gym.envs.registration.register(
     id='Q1PhysEnv-v0',
     entry_point='q1physrl_env.env:PhysEnv',
     nondeterministic=False,
-    kwargs={'config': DEFAULT_CONFIG},
+    kwargs={'config': Config.get_default()},
 )

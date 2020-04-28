@@ -43,13 +43,14 @@ import numpy as np
 import pandas as pd
 
 
+# These parameters are the constants defined in the Quake physics code.
 _MAX_SPEED = np.float32(320)
 _ACCELERATE = np.float32(10)
 _FRICTION = np.float32(4)
 _STOP_SPEED = np.float32(100)
 _JUMP_SPEED = np.float32(270)
 _GRAVITY = np.float32(800)
-_FLOOR_HEIGHT = np.float32(24.03125)  # 24 + DIST_EPSILON
+_FLOOR_HEIGHT = np.float32(24.03125)  # 24 + DIST_EPSILON, 24 being the 100m map floor height.
 
 
 def _angle_vectors(yaw, pitch, roll):

@@ -197,8 +197,8 @@ def draw_inputs(im, keys, yaw, xform):
 def eval_sim(trainer, env_config: env.Config):
     e = env.VectorPhysEnv(dataclasses.asdict(env_config))
     o, = e.vector_reset()
-    action_to_move = env.ActionToMove(env_config)
-    action_to_move.vector_reset(e._yaw)
+    action_decoder = env.ActionDecoder(env_config)
+    action_decoder.vector_reset(e._yaw)
 
     obs = []
     reward = []
@@ -212,7 +212,7 @@ def eval_sim(trainer, env_config: env.Config):
 
     while not done:
         a = trainer.compute_action(o)
-        (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map(
+        (yaw,), (smove,), (fmove,), (jump,) = action_decoder.map(
                 [a], o[None, env.Obs.Z_VEL], e._time_remaining)
 
         player_states.append(e.player_state)

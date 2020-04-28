@@ -9,10 +9,14 @@ To summarize, I developed a facsimile of Quake player movement physics in Python
 then trained an agent for this using RLLib's implementation of PPO.  In the end the agent was able to beat the current
 human speedrun record on a speed running practice map.
 
+Read on to find out more about the environment, or skip to [Setup][#Setup] if you would like to get started using the
+environment or training your own model.
+
+## Setup
+
 Find below instructions to use the gym environment, train your own model, and produce a demo file.
 
-
-## Installing the gym env
+### Installing the gym env
 
 If you just want to play with the gym environment then you need only clone this repo and install the env package:
 
@@ -23,10 +27,11 @@ pip install -e q1physrl/q1physrl_env
 
 The environment ID is `Q1PhysEnv-v0` which is registered by importing `q1physrl_env.env`.  The environment accepts a
 single argument `config` which is an instance of `q1phys_env.env.Config`.  See the
-[docstring for this class](/q1physrl_env/q1physrl_env/env.py#L81) for more details.
+[q1physrl_env.env.PhysEnv](/q1physrl_env/q1physrl_env/env.py#L297) for a detailed description of the environment, and 
+[q1physrl_env.env.PhysEnv](/q1physrl_env/q1physrl_env/env.py#L96) for a description of configuration options.
 
 
-## Training
+### Training
 
 If instead you want to train the model used in the video, including trying out new hyper parameters and environment
 settings, then follow the steps below:
@@ -68,13 +73,13 @@ produce a demo file (see below).   The checkpoint files can also be used to resu
 variable.   
 
 
-## Analysis
+### Analysis
 
 Use [this notebook](/notebooks/Analyse.ipynb) to analyse the checkpoints produced from training. Click through to see
 an example of what it produces.
 
 
-## Producing a Quake demo file
+### Producing a Quake demo file
 
 Demo files (extension `.dem`) are how games are recorded and shared in Quake.
 
@@ -104,7 +109,7 @@ repeatedly reads state from the server, pushes it through the model, and sends m
 network traffic is recorded to produce the demo file. The quakespasm server is modified to pause at the end of each
 frame until a new movement command is received, to avoid issues of synchronization.
 
-## Playing the demo file
+### Playing the demo file
 
 The demo file can be played by following these steps:
 - Install a registered version of Quake. (See section above for why the registered version is necessary.)

@@ -44,8 +44,8 @@ def _make_observation(client, time_remaining, config):
     return np.concatenate([[time_remaining], [yaw], [z_pos], vel]) / obs_scale
 
 
-def _apply_action(client, action_to_move, action, time_remaining):
-    (yaw,), (smove,), (fmove,), (jump,) = action_to_move.map([[a[0] for a in action]],
+def _apply_action(client, action_decoder, action, time_remaining):
+    (yaw,), (smove,), (fmove,), (jump,) = action_decoder.map([[a[0] for a in action]],
                                                              np.float32(client.velocity[2])[None],
                                                              np.float32(time_remaining)[None])
     yaw *= np.pi / 180
@@ -60,8 +60,8 @@ async def _eval_coro(config, port, trainer, demo_file):
 
     client = await pyquake.client.AsyncClient.connect("localhost", port)
     config = env.Config(**{**config, 'num_envs': 1})
-    action_to_move = env.ActionToMove(config)
-    action_to_move.vector_reset(np.array([env.INITIAL_YAW_ZERO]))
+    action_decoder = env.ActionDecoder(config)
+    action_decoder.vector_reset(np.array([env.INITIAL_YAW_ZERO]))
 
     obs_list = []
     action_list = []
@@ -80,7 +80,7 @@ async def _eval_coro(config, port, trainer, demo_file):
             action = trainer.compute_action(obs)
             action_list.append(action)
 
-            _apply_action(client, action_to_move, action, time_remaining)
+            _apply_action(client, action_decoder, action, time_remaining)
             await client.wait_for_movement(client.view_entity)
 
         demo.stop_recording()
