@@ -103,16 +103,18 @@ class Config:
             step.
         max_initial_speed: When not doing a zero start, gives the maximum initial speed along the ground plane.
         time_delta: Time of each frame.
-        action_range: Min and max bounds for the action space's mouse dimension.
         time_limit: Episode length in seconds
         allow_yaw: Have a mouse dimension in the action space.
+        action_range: Min and max bounds for the action space's mouse dimension.
         discrete_yaw_steps: How many discrete steps to use for the mouse action dimension. Use -1 for continuous.
             Does nothing if allow_yaw is false.
         speed_reward: Reward speed rather than y component of the velocity.
-        fmove_max: Corresponds with cl_forwardspeed.  When forward is pressed, a forward facing component is added to
-            the player's wish direction.  The magnitude of this component is given by this value.
-        smove_max: Corresponds with cl_sidespeed.  Same as fmove_max but for side facing components.
-        hover: No gravity, fixed initial speed.  Use to learn air movement physics without being concerned about 
+        fmove_max: Corresponds with the `cl_forwardspeed` cvar in Quake.  When forward is pressed, a forward facing
+            component is added to the player's wish direction.  The magnitude of this component is given by this value.
+        smove_max: Corresponds with the `cl_sidespeed` cvar in Quake.  Same as `fmove_max` but for side facing
+            components.
+        hover: No gravity, fixed initial velocity.  Use to learn air movement physics without being concerned about
+            ground friction.
         key_press_delay: Minimum time in seconds between consecutive presses of the same key.  This means the relevant
             element of the action vector will be internally set to zero if there have been two key down events in the
             last `key_press_delay` seconds.  Here a "key down" event means a 0-1 transition of the action vector
@@ -132,9 +134,9 @@ class Config:
     initial_yaw_range: Tuple[float, float]
     max_initial_speed: float
     time_delta: float = 0.014  # Rules state 1/72, but 0.014 is the default for backwards compatibility.
-    action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
     time_limit: float = 5
     allow_yaw: bool = True
+    action_range: float = _MAX_YAW_SPEED * _DEFAULT_TIME_DELTA
     discrete_yaw_steps: int = -1
     speed_reward: bool = False
     fmove_max: float = 800.
@@ -295,17 +297,17 @@ def get_obs_scale(config):
 
 
 class PhysEnv(gym.Env):
-    """Quake 1 physics environment
+    """Quake 1 physics environment.
     
     The environment models the player movement physics of Quake.  To keep things simple, the world is treated as a flat
     plane with no obstacles, with the objective of moving as far along the y-axis as possible in a ten second time
-    limit.  The physics modelling is accurate enough that it can run the 100m practice map mentioned above in the real
-    game, after being trained on the simulated environment.
+    limit.  The physics modelling is accurate enough that it can run the 100m practice map in the real game, after being
+    trained on the simulated environment.
 
-    The below describes the default behaviour of the environment, but many of the parameters can be tweaked via the
+    The below describes the default behaviour of the environment but many of the parameters can be tweaked via the
     config.  See `Config` for details.
 
-    By default the environment has a tuple action space consisting of:
+    The environment has a tuple action space consisting of:
     - Four discrete "keys", corresponding with left, right, forward, and jump.
     - A continuous dimension indicating how much the yaw should change in the next frame.  This says how far the player
       should turn left or right in this frame.
@@ -319,9 +321,11 @@ class PhysEnv(gym.Env):
     - Z (height) position.
     - X, Y, and Z velocity.
 
-    Observations are normalized to be more or less between zero and one.
+    Observations are normalized to be approximately between zero and one.
 
-    Rewards correspond with how far the player travels along the Y-axis in the given frame (Z is up).
+    Rewards correspond with how far the player travels along the Y-axis in the given frame (note that Z is up in the
+    Quake coordinate system, which the replica engine also uses).  The positive Y direction corresponds with running
+    forwards on the 100m map.
 
     In order to aid exploration the following aspects of the initial state are randomized:
     - Time remaining.
@@ -330,7 +334,8 @@ class PhysEnv(gym.Env):
     - Player angle.
 
     1% of episodes start with a fixed initial state chosen to match that of a freshly spawned player in the real game.
-    If this is the case, then the info dict indicates as such with the `zero_start` field.
+    If this is the case, then the info dict returned by `step` indicates as such with the `zero_start` field.  The
+    purpose of this is that it allows one to implement metrics which indicate performance in the real game.
 
     """
     def __init__(self, config: Union[Config, dict]):
@@ -435,8 +440,12 @@ class VectorPhysEnv(VectorEnv):
         speed = np.where(self._zero_start,
                          0,
                          np.random.uniform(self._config.max_initial_speed, size=(self.num_envs,)))
+        if self._config.hover:
+            speed[:] = 320
 
         move_angle = np.random.uniform(2 * np.pi, size=(self.num_envs,))
+        if self._config.hover:
+            move_angle[:] = np.pi / 2
 
         self.player_state.vel[:, 0] = speed * np.cos(move_angle)
         self.player_state.vel[:, 1] = speed * np.sin(move_angle)
@@ -456,8 +465,13 @@ class VectorPhysEnv(VectorEnv):
                                        if self._zero_start[index]
                                        else np.random.uniform(self._config.time_limit))
         speed = 0 if self._zero_start[index] else np.random.uniform(self._config.max_initial_speed)
+        if self._config.hover:
+            speed = 320
 
         move_angle = np.random.uniform(2 * np.pi)
+        if self._config.hover:
+            move_angle = np.pi / 2
+
         self.player_state.vel[index, 0] = speed * np.cos(move_angle)
         self.player_state.vel[index, 1] = speed * np.sin(move_angle)
 

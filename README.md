@@ -9,9 +9,6 @@ To summarize, I developed a facsimile of Quake player movement physics in Python
 then trained an agent for this using RLLib's implementation of PPO.  In the end the agent was able to beat the current
 human speedrun record on a speed running practice map.
 
-Read on to find out more about the environment, or skip to [Setup][#Setup] if you would like to get started using the
-environment or training your own model.
-
 ## Setup
 
 Find below instructions to use the gym environment, train your own model, and produce a demo file.
@@ -26,9 +23,9 @@ pip install -e q1physrl/q1physrl_env
 ```
 
 The environment ID is `Q1PhysEnv-v0` which is registered by importing `q1physrl_env.env`.  The environment accepts a
-single argument `config` which is an instance of `q1phys_env.env.Config`.  See the
+single argument `config` which is an instance of `q1phys_env.env.Config`.  See 
 [q1physrl_env.env.PhysEnv](/q1physrl_env/q1physrl_env/env.py#L297) for a detailed description of the environment, and 
-[q1physrl_env.env.PhysEnv](/q1physrl_env/q1physrl_env/env.py#L96) for a description of configuration options.
+[q1physrl_env.env.Config](/q1physrl_env/q1physrl_env/env.py#L95) for a description of configuration options.
 
 
 ### Training
