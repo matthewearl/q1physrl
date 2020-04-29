@@ -44,8 +44,16 @@ tfp = try_import_tfp()
 
 
 class _SquashedGaussianBase(TFActionDistribution):
-    """A diagonal gaussian distribution, squashed into bounded support."""
+    """A diagonal gaussian distribution, squashed into bounded support.
+    
+    This is needed since the ray default is to use a plain gaussian but clip the values.  In this case the KL and
+    entropy are calculated as per the unclipped distribution, and so learning hits a failure mode in which most of the
+    mass is pushed outside of the clipping region, encouraged by a negative entropy term in the loss function.
 
+    This is an abstract base class for all squashed gaussian types, which leaves the squash / unsquash / kl / entropy
+    methods undefined.
+
+    """
     def __init__(self, inputs, model, low=-1.0, high=1.0):
         """Parameterizes the distribution via `inputs`.
 
@@ -133,8 +141,10 @@ class _SquashedGaussianBase(TFActionDistribution):
 class GaussianSquashedGaussian(_SquashedGaussianBase):
     """A gaussian CDF-squashed Gaussian distribution.
 
-    The distribution will never return low or high exactly, but
-    `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
+    The distribution will never return low or high exactly, but `low`+SMALL_NUMBER or `high`-SMALL_NUMBER respectively.
+
+    See base class documentation for a justification of squashed gaussians.
+
     """
     # Chosen to match the standard logistic variance, so that:
     #   Var(N(0, 2 * _SCALE)) = Var(Logistic(0, 1))
@@ -187,6 +197,14 @@ class GaussianSquashedGaussian(_SquashedGaussianBase):
 
 
 class Q1PhysActionDist(MultiActionDistribution):
+    """
+    Action distribution used for training the quake 1 physics environment.
+
+    Since the action space is always a tuple this subclasses MultiActionDistribution and pulls in appropriate
+    distributions for the component action spaces, notably `GaussianSquashedGaussian` for the box action.  See the
+    docstring for this class for more information.
+
+    """
     @staticmethod
     def _get_child_dists(action_space):
         child_dist = []
