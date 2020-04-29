@@ -50,9 +50,9 @@ pip install -e .
 q1physrl_train data/params.yml
 ```
 
-...and wait for convergence.  Modify the file referenced in the argument to change hyper-parameters and environment
-settings.  My current PB (the one in the video) gets about 5700 on the `zero_start_total_reward_mean` metric, after 150
-million steps, which takes about a day on my i7-6700K:
+...and wait for convergence.  Modify the [file referenced in the argument](/data/params.yml) to change hyper-parameters
+and environment settings.  My current PB (the one in the video) gets about 5700 on the `zero_start_total_reward_mean`
+metric, after 150 million steps, which takes about a day on my i7-6700K:
 
 ![screenshot of training curve](/data/images/train.png)
 
