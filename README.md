@@ -24,7 +24,7 @@ pip install -e q1physrl/q1physrl_env
 
 The environment ID is `Q1PhysEnv-v0` which is registered by importing `q1physrl_env.env`.  The environment accepts a
 single argument `config` which is an instance of `q1phys_env.env.Config`.  See 
-[q1physrl_env.env.PhysEnv](/q1physrl_env/q1physrl_env/env.py#L297) for a detailed description of the environment, and 
+[q1physrl_env.env.PhysEnv](/q1physrl_env/q1physrl_env/env.py#L299) for a detailed description of the environment, and 
 [q1physrl_env.env.Config](/q1physrl_env/q1physrl_env/env.py#L95) for a description of configuration options.
 
 
