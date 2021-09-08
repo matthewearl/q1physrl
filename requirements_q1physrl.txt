@@ -36,7 +36,7 @@ opencv-python==4.2.0.34
 opencv-python-headless==4.2.0.34
 opt-einsum==3.2.0
 pandas==1.0.3
-Pillow==7.1.1
+Pillow==8.3.2
 protobuf==3.11.3
 py-spy==0.3.3
 pyasn1==0.4.8
